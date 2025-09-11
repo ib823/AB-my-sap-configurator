@@ -1,5 +1,6 @@
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import SAPScopeApp from './SAPScopeApp';
 
 /* ===========================================
    AppleEye — animated, label-free, “Apple-like”
@@ -459,6 +460,7 @@ export default function ProjectTimeline() {
 
   // Client presentation mode - hides all monetary figures
   const [clientPresentationMode, setClientPresentationMode] = useState(false);
+  const [sapScopeOpen, setSapScopeOpen] = useState(false);
 
   // Helper function to conditionally show monetary values
   const showMoney = (monetaryValue, fallback = "—") => {
@@ -468,10 +470,10 @@ export default function ProjectTimeline() {
   // Resource Management Cockpit state
   const [resourceManagementOpen, setResourceManagementOpen] = useState(false);
 
-  const [operatingMode, setOperatingMode] = useState("consultant"); // 'consultant' | 'client_facing' | 'proposal_review'
-  const [sapSelection, setSapSelection] = useState(null);
-  const [clientProfile, setClientProfile] = useState(null);
-  const [recommendations, setRecommendations] = useState([]);
+const [operatingMode, setOperatingMode] = useState("consultant"); // 'consultant' | 'client_facing' | 'sap_scope' | 'proposal_review'
+const [sapSelection, setSapSelection] = useState(null);
+const [clientProfile, setClientProfile] = useState(null);
+const [recommendations, setRecommendations] = useState([]);
 
   // Project Location (OPE)
   const [projectLocation, setProjectLocation] = useState({
@@ -740,6 +742,36 @@ const convertCurrency = (amount, fromRegion, toRegion) => {
     const id = setInterval(fetchLiveRates, 3600000);
     return () => clearInterval(id);
   }, []); // eslint-disable-line
+
+  // ADD this new useEffect:
+useEffect(() => {
+  const handleSAPScopeExport = (event) => {
+    const { packages, clientProfile, totalEffort, integrations, malaysiaForms, projectServices } = event.detail;
+    
+    // Simple transformation - map package IDs directly
+    const packageIds = packages.map(pkg => pkg.id);
+    const clientData = {
+      companyName: clientProfile?.company_name || "",
+      industry: clientProfile?.industry || "services",
+      region: "ABMY",
+      size: clientProfile?.company_size || "medium",
+      complexity: "standard",
+      timeline: "normal",
+      employees: 500,
+      annualRevenueMYR: 200000000
+    };
+    
+    // Import into timeline using existing function
+    importSAPTimeline(packageIds, clientData);
+    
+    // Close SAP scope and switch to timeline view
+    setSapScopeOpen(false);
+    setOperatingMode("proposal_review");
+  };
+  
+  window.addEventListener('sapScopeExport', handleSAPScopeExport);
+  return () => window.removeEventListener('sapScopeExport', handleSAPScopeExport);
+}, []);
 
   /* =====================
      DATE / TIMELINE UTILS
@@ -1098,6 +1130,8 @@ const getHolidaysInRange = () => {
     }, duration);
   };
 
+  {/* SAP Scope Modal */}
+
   const NotificationStack = () => (
     <div
       style={{
@@ -1438,7 +1472,8 @@ const getHolidaysInRange = () => {
       employees: Number(companyProfile?.employees || 500),
       annualRevenueMYR: Number(companyProfile?.annualRevenueMYR || 200_000_000)
     };
-
+    
+    // ADD this transformation function:
     const foundation = buildFoundationPhases(profile);
 
     const functionalPhases = selectedPackages
@@ -1860,164 +1895,6 @@ useEffect(() => {
   /* ==========================
      PATCH 5: SAP PACKAGE SELECTOR
      ========================== */
-  const SAPPackageSelector = () => {
-    const [selectedPackages, setSelectedPackages] = useState([]);
-    const [clientData, setClientData] = useState({
-      companyName: "",
-      industry: "",
-      region: "ABMY",
-      size: "medium",
-      complexity: "standard",
-      timeline: "normal",
-      employees: 500,
-      annualRevenueMYR: 200000000
-    });
-
-    const handlePackageSelection = (pkgId) => {
-      setSelectedPackages((prev) =>
-        prev.includes(pkgId) ? prev.filter((id) => id !== pkgId) : [...prev, pkgId]
-      );
-    };
-
-    const recs = suggestAdditionalPackages(selectedPackages, clientData);
-
-    return (
-      <div style={{ padding: "32px", background: "white" }}>
-        {/* Client Profile Section */}
-        <div style={{ marginBottom: "32px", padding: "24px", background: "linear-gradient(135deg, #F8FAFF 0%, #F0F4FF 100%)", borderRadius: "12px", border: "1px solid rgba(0,122,255,0.1)" }}>
-          <h3 style={{ margin: "0 0 16px 0", fontSize: "18px", fontWeight: 800 }}>Client Information</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-            <div>
-              <label className="form-label">Company Name</label>
-              <input 
-                className="form-input" 
-                placeholder="Enter company name" 
-                value={clientData.companyName} 
-                onChange={(e)=>setClientData({...clientData, companyName:e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="form-label">Industry</label>
-              <input 
-                className="form-input" 
-                placeholder="e.g., Manufacturing, Finance" 
-                value={clientData.industry} 
-                onChange={(e)=>setClientData({...clientData, industry:e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="form-label">Region</label>
-              <select className="form-select" value={clientData.region} onChange={(e)=>setClientData({...clientData, region:e.target.value})}>
-                {Object.keys(RESOURCE_CATALOG).map((rc)=> <option key={rc} value={rc}>{rc}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="form-label">Company Size</label>
-              <select className="form-select" value={clientData.size} onChange={(e)=>setClientData({...clientData, size:e.target.value})}>
-                <option value="small">Small (&lt; 500 employees)</option>
-                <option value="medium">Medium (500-2000 employees)</option>
-                <option value="large">Large (2000-10000 employees)</option>
-                <option value="enterprise">Enterprise (10000+ employees)</option>
-              </select>
-            </div>
-            <div>
-              <label className="form-label">Project Complexity</label>
-              <select className="form-select" value={clientData.complexity} onChange={(e)=>setClientData({...clientData, complexity:e.target.value})}>
-                <option value="low">Low - Standard processes</option>
-                <option value="standard">Standard - Some customization</option>
-                <option value="high">High - Complex integrations</option>
-                <option value="extreme">Extreme - Highly customized</option>
-              </select>
-            </div>
-            <div>
-              <label className="form-label">Timeline Preference</label>
-              <select className="form-select" value={clientData.timeline} onChange={(e)=>setClientData({...clientData, timeline:e.target.value})}>
-                <option value="relaxed">Relaxed - Quality focused</option>
-                <option value="normal">Normal - Balanced approach</option>
-                <option value="aggressive">Aggressive - Fast delivery</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* Recommendations */}
-        {!!recs.length && (
-          <div style={{ padding:"16px", border:"2px dashed var(--primary)", borderRadius:"12px", background:"linear-gradient(135deg,#FAFBFF 0%,#F5F7FF 100%)", marginBottom:"24px" }}>
-            <div style={{ fontWeight:800, fontSize:"16px", marginBottom:"12px", color:"var(--primary)" }}>Recommended Additional Packages</div>
-            <div style={{ display:"flex", gap:"12px", flexWrap:"wrap" }}>
-              {recs.map((id)=>(
-                <button key={id} className="secondary-action" onClick={()=>handlePackageSelection(id)} style={{ borderColor:"var(--primary)", color:"var(--primary)", padding:"10px 16px" }}>
-                  + {SAP_CATALOG[id]?.name || id}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Package Categories */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(450px, 1fr))", gap: "24px", marginBottom: "32px" }}>
-          {Object.entries(BUSINESS_CATEGORIES).map(([catName, cat]) => (
-            <div key={catName} style={{ border:"2px solid var(--border)", borderRadius:"16px", padding:"20px", background:"white", boxShadow:"0 4px 12px rgba(0,0,0,0.05)" }}>
-              <div style={{ fontWeight:900, marginBottom:"16px", fontSize:"18px", display:"flex", alignItems:"center", gap:"8px" }}>
-                <span style={{fontSize:"24px"}}>{cat.icon}</span>
-                {catName}
-              </div>
-              <p style={{ color:"var(--text-secondary)", marginBottom:"20px", fontSize:"14px" }}>{cat.description}</p>
-              
-              <div style={{ display:"grid", gap:"12px" }}>
-                {cat.packages.map((pkgId)=> {
-                  const pkg = SAP_CATALOG[pkgId];
-                  if (!pkg) return null;
-                  const active = selectedPackages.includes(pkgId);
-                  return (
-                    <div
-                      key={pkgId}
-                      onClick={()=>handlePackageSelection(pkgId)}
-                      style={{
-                        border:`3px solid ${active ? "var(--primary)" : "var(--border)"}`,
-                        borderRadius:"12px",
-                        padding:"16px",
-                        cursor:"pointer",
-                        background: active ? "rgba(0,122,255,0.08)" : "white",
-                        transition:"all 0.2s ease"
-                      }}
-                    >
-                      <div style={{ fontWeight:800, fontSize:"16px", marginBottom:"8px" }}>{pkg.name}</div>
-                      <div style={{ fontSize:"14px", color:"var(--text-secondary)", marginBottom:"12px", lineHeight:"1.4" }}>{pkg.description}</div>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                        <span style={{ background:"var(--background)", padding:"6px 12px", borderRadius:"6px", fontSize:"13px", fontWeight:"700" }}>{pkg.mandays} days</span>
-                        <span style={{ color: active ? "var(--primary)" : "var(--success)", fontWeight:900, fontSize:"14px" }}>
-                          {active ? "✓ Selected" : "Available"}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Action Bar */}
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"20px", background:"linear-gradient(135deg, #F8FAFF 0%, #F0F4FF 100%)", borderRadius:"12px", border:"1px solid rgba(0,122,255,0.1)" }}>
-          <div>
-            <div style={{ fontSize:"18px", fontWeight:900, color:"var(--text-primary)" }}>{selectedPackages.length} packages selected</div>
-            <div style={{ fontSize:"14px", color:"var(--text-secondary)" }}>
-              {selectedPackages.reduce((sum, id) => sum + (SAP_CATALOG[id]?.mandays || 0), 0)} estimated man-days
-            </div>
-          </div>
-          <button 
-            className="primary-action" 
-            disabled={!selectedPackages.length || !clientData.companyName.trim()} 
-            onClick={()=>importSAPTimeline(selectedPackages, clientData)}
-            style={{ padding:"16px 32px", fontSize:"16px", fontWeight:"800" }}
-          >
-            Generate Timeline & Estimate
-          </button>
-        </div>
-      </div>
-    );
-  };
 
   /* ==========================
      Project Location Setup Modal
@@ -2898,13 +2775,13 @@ const ForexRateModal = () => {
      ========================== */
   const HeaderControls = () => (
     <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-      <button 
-        className="secondary-action" 
-        onClick={() => setOperatingMode('client_facing')}
-        style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px" }}
-      >
-        📑 SAP Scope
-      </button>
+<button 
+  className="secondary-action" 
+  onClick={() => setSapScopeOpen(true)}
+  style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px" }}
+>
+  📑 SAP Scope Builder
+</button>
 
       <button 
         className="secondary-action" 
@@ -2974,6 +2851,8 @@ const ForexRateModal = () => {
     </div>
   );
 
+
+  
 const CurrencyWarning = () => {
   if (selectedCatalogRegion === "ABMY") return null;
   
@@ -3792,54 +3671,6 @@ const CurrencyWarning = () => {
       </div>
 
       {/* PATCH 4: Improved SAP Scope Builder Modal */}
-      {operatingMode === 'client_facing' && (
-        <div style={{
-          position: "fixed",
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: "rgba(0,0,0,0.6)",
-          zIndex: 1000,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 20
-        }}>
-          <div style={{
-            background: "white",
-            borderRadius: 16,
-            width: "90vw",
-            maxWidth: 1000,
-            maxHeight: "90vh",
-            overflow: "hidden",
-            boxShadow: "0 20px 60px rgba(0,0,0,0.3)"
-          }}>
-            <div style={{ 
-              padding: "24px", 
-              borderBottom: "1px solid var(--border)",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              background: "linear-gradient(135deg, #F8FAFF 0%, #F0F4FF 100%)"
-            }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: "24px", fontWeight: 900, color: "var(--text-primary)" }}>SAP Implementation Scope Builder</h2>
-                <p style={{ margin: "4px 0 0 0", color: "var(--text-secondary)", fontSize: "14px" }}>
-                  Configure your SAP implementation scope and generate automated project timeline
-                </p>
-              </div>
-              <button 
-                className="secondary-action" 
-                onClick={() => setOperatingMode('consultant')}
-                style={{ padding: "12px 16px", fontSize: "14px" }}
-              >
-                Close
-              </button>
-            </div>
-            <div style={{ padding: "0", maxHeight: "calc(90vh - 100px)", overflow: "auto" }}>
-              <SAPPackageSelector />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Backdrop */}
       <div className={`backdrop ${detailPanelOpen ? "open" : ""}`} onClick={closePhaseDetail} />
@@ -3848,7 +3679,52 @@ const CurrencyWarning = () => {
 <DetailPanel />
 <ResourceManagementModal />
 <ProjectLocationModal />
-<ForexRateModal />  {/* Add this line */}
+<ForexRateModal />
+
+{/* SAP Scope Modal */}
+{sapScopeOpen && (
+  <div style={{
+    position: "fixed",
+    top: 0, left: 0, right: 0, bottom: 0,
+    background: "rgba(0,0,0,0.6)",
+    zIndex: 10000,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20
+  }}>
+    <div style={{
+      background: "white",
+      borderRadius: 16,
+      width: "95vw",
+      height: "95vh",
+      overflow: "hidden",
+      boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+      position: "relative"
+    }}>
+      <div style={{ 
+        padding: "16px 24px", 
+        borderBottom: "1px solid var(--border)",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        background: "linear-gradient(135deg, #F8FAFF 0%, #F0F4FF 100%)"
+      }}>
+        <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 900 }}>SAP Implementation Scope Builder</h2>
+        <button 
+          className="secondary-action" 
+          onClick={() => setSapScopeOpen(false)}
+        >
+          Close
+        </button>
+      </div>
+      <div style={{ height: "calc(95vh - 80px)", overflow: "auto" }}>
+        <SAPScopeApp />
+      </div>
+    </div>
+  </div>
+)}
+
 <NotificationStack />
     </div>
   );
