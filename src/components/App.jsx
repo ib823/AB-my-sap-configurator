@@ -1,6 +1,7 @@
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import SAPScopeApp from './SAPScopeApp';
+import AppProvider from './AppProvider'
 
 /* ===========================================
    AppleEye — animated, label-free, “Apple-like”
@@ -3719,7 +3720,9 @@ const CurrencyWarning = () => {
         </button>
       </div>
       <div style={{ height: "calc(95vh - 80px)", overflow: "auto" }}>
+      <AppProvider>
         <SAPScopeApp />
+      </AppProvider>
       </div>
     </div>
   </div>
