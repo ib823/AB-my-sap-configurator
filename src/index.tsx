@@ -1,9 +1,10 @@
 import React, { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "./styles.css";
-import App from "./app.jsx"; // your file is app.jsx
+import "../styles.css";
+import App from "./components/App";
 
-createRoot(document.getElementById("root")).render(
+const root = createRoot(document.getElementById("root")!);
+root.render(
   <StrictMode>
     <App />
   </StrictMode>
