@@ -2,6 +2,8 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import SAPScopeApp from './SAPScopeApp';
 import AppProvider from './AppProvider'
+import { AIEstimationPanel } from "./AIEstimationPanel";
+import { useAIEstimation } from "../hooks/useAIEstimation";
 
 /* ===========================================
    AppleEye — animated, label-free, “Apple-like”

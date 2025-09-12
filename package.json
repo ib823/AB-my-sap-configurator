@@ -7,21 +7,30 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview --host",
-    "lint": "eslint src --ext js,jsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint src --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "ai:test": "echo 'Testing AI capabilities...'",
+    "ai:benchmark": "echo 'Running AI performance benchmarks...'"
   },
   "dependencies": {
+    "@huggingface/inference": "^4.8.0",
     "@tanstack/react-query": "^4.36.1",
-    "axios": "^1.6.2",
+    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-backend-webgpu": "^4.22.0",
+    "@tensorflow/tfjs-node": "^4.22.0",
+    "axios": "^1.12.0",
     "date-fns": "^2.30.0",
     "lucide-react": "^0.263.1",
+    "openai": "^5.20.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.48.2",
     "recharts": "^2.8.0",
+    "uuid": "^13.0.0",
     "zod": "^3.22.4",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^5.0.2",
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
