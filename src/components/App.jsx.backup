@@ -4,8 +4,6 @@ import SAPScopeApp from './SAPScopeApp';
 import AppProvider from './AppProvider'
 import { AIEstimationPanel } from "./AIEstimationPanel";
 import { useAIEstimation } from "../hooks/useAIEstimation";
-import { PackageSelector } from './PackageSelector';
-import { useApp } from './AppProvider';
 
 /* ===========================================
    AppleEye — animated, label-free, “Apple-like”
