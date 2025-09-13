@@ -1,16 +1,137 @@
-// ===================================================================
-// PHASE 4B: APP INTEGRATION & CONTEXT UPDATES  
-// AB-my-sap-configurator | feat/implement-schemas-20250912
-// Integration updates for new package components
-// ===================================================================
+import React, { useState, useContext, createContext, useCallback, useMemo, useEffect } from 'react';
 
-// ===================================================================
-// 1. UPDATED AppProvider.tsx - Enhanced with Package Management
-// ===================================================================
+// ======================== TYPES & INTERFACES ========================
 
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
-import { COMPLETE_PACKAGE_LIBRARY, MALAYSIA_FORMS_LIBRARY, PROJECT_SERVICES_LIBRARY } from '../data/packageLibrary';
-import { SAPPackage, SAPModule, ClientProfile, Integration, MalaysiaForm, ProjectService, PackageChange, UserRole, RiskAssessmentT } from '../types/schemas';
+interface SAPModule {
+  id: string;
+  name: string;
+  description: string;
+  effort_pd: number;
+  prerequisites: string[];
+  selected: boolean;
+  critical_path?: boolean;
+  malaysia_verified?: boolean;
+}
+
+interface SAPPackage {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  total_effort_pd: number;
+  sgd_price: number;
+  layer: 'core' | 'supplementary' | 'integration' | 'external' | 'analytics';
+  type: 'core' | 'supplementary' | 'integration' | 'external' | 'analytics' | 'identity';
+  icon: string;
+  malaysia_verified: boolean;
+  critical_path: boolean;
+  modules: SAPModule[];
+  expanded: boolean;
+  selected: boolean;
+  prerequisites: string[];
+  source: string;
+  compliance_critical?: boolean;
+  statutory_included?: string[];
+  bank_formats_included?: number;
+}
+
+interface Integration {
+  id: string;
+  system_name: string;
+  integration_type: 'API' | 'File Transfer' | 'Real-time' | 'Batch' | 'Event-driven' | 'Database Direct';
+  complexity: 'Simple' | 'Medium' | 'Complex';
+  effort_pd: number;
+  description: string;
+}
+
+interface MalaysiaForm {
+  id: string;
+  form_name: string;
+  category: 'Statutory' | 'Banking' | 'HR' | 'Finance' | 'Compliance' | 'Sales' | 'Procurement' | 'Logistics';
+  mandatory: boolean;
+  effort_pd: number;
+  description: string;
+  regulatory_body: string;
+  selected: boolean;
+  sap_module: string;
+}
+
+interface ProjectService {
+  id: string;
+  service_name: string;
+  category: 'Project Management' | 'Cutover & Migration' | 'Training' | 'Basis & Infrastructure' | 'Support';
+  effort_pd: number;
+  description: string;
+  mandatory: boolean;
+  selected: boolean;
+}
+
+interface ClientProfile {
+  company_name: string;
+  industry: 'services' | 'manufacturing' | 'financial_services' | 'government' | 'retail';
+  company_size: 'sme' | 'mid_market' | 'large' | 'enterprise';
+  system_landscape: 'greenfield' | 'brownfield' | 'hybrid' | 'complex_hybrid';
+  client_maturity: 'sap_naive' | 'sap_experienced' | 'sap_expert';
+  legal_entities: number;
+}
+
+interface UserRole {
+  type: 'user' | 'super_user' | 'admin';
+  permissions: {
+    view_packages: boolean;
+    edit_packages: boolean;
+    create_packages: boolean;
+    delete_packages: boolean;
+    export_library: boolean;
+  };
+}
+
+interface PackageChange {
+  id: string;
+  timestamp: Date;
+  user: string;
+  type: 'create' | 'update' | 'delete' | 'module_add' | 'module_update' | 'module_delete';
+  packageId: string;
+  before?: any;
+  after?: any;
+  reason: string;
+}
+
+interface RiskAssessment {
+  overall_risk: 'LOW' | 'MEDIUM' | 'HIGH';
+  specific_risks: Array<{
+    package: string;
+    risk: string;
+    likelihood: 'LOW' | 'MEDIUM' | 'HIGH';
+    impact: 'LOW' | 'MEDIUM' | 'HIGH';
+    mitigation: string;
+  }>;
+  fricew_risks: Array<{
+    category: string;
+    likelihood: 'LOW' | 'MEDIUM' | 'HIGH';
+    impact: 'LOW' | 'MEDIUM' | 'HIGH';
+  }>;
+}
+
+interface BundleAnalysis {
+  bundle_opportunities: Array<{
+    bundle_name: string;
+    individual_cost_sgd: number;
+    bundle_cost_sgd: number;
+    savings_sgd: number;
+    savings_percentage: number;
+    risk_note: string;
+  }>;
+  recommendations: string[];
+}
+
+interface ImplementationPhase {
+  phase_name: string;
+  packages: string[];
+  duration_weeks: number;
+  parallel_opportunities: string[];
+  critical_dependencies: string[];
+}
 
 interface AppState {
   packages: SAPPackage[];
@@ -18,7 +139,7 @@ interface AppState {
   malaysiaForms: MalaysiaForm[];
   projectServices: ProjectService[];
   clientProfile: ClientProfile;
-  selectedView: string;
+  selectedView: 'packages' | 'integrations' | 'forms' | 'services';
   btpIntegrationEnabled: boolean;
   userRole: UserRole;
   adminMode: boolean;
@@ -32,7 +153,7 @@ interface AppContextType {
   state: AppState;
   updatePackage: (id: string, updates: Partial<SAPPackage>) => void;
   updateClientProfile: (updates: Partial<ClientProfile>) => void;
-  setSelectedView: (view: string) => void;
+  setSelectedView: (view: 'packages' | 'integrations' | 'forms' | 'services') => void;
   addIntegration: (integration: Omit<Integration, 'id'>) => void;
   removeIntegration: (id: string) => void;
   updateIntegration: (id: string, updates: Partial<Integration>) => void;
@@ -40,929 +161,583 @@ interface AppContextType {
   updateProjectService: (id: string, updates: Partial<ProjectService>) => void;
   setBtpIntegrationEnabled: (enabled: boolean) => void;
   setAdminMode: (enabled: boolean) => void;
-  addPackage: (pkg: Omit<SAPPackage, "id" | "expanded" | "selected">) => void;
+  addPackage: (pkg: Omit<SAPPackage, 'id'>) => void;
   deletePackage: (id: string) => void;
-  addModule: (packageId: string, mod: Omit<SAPModule, "id" | "selected">) => void;
+  addModule: (packageId: string, module: Omit<SAPModule, 'id'>) => void;
   updateModule: (packageId: string, moduleId: string, updates: Partial<SAPModule>) => void;
   deleteModule: (packageId: string, moduleId: string) => void;
   duplicatePackage: (id: string) => void;
   exportLibrary: () => void;
   importLibrary: (data: any) => void;
-  logChange: (change: Omit<PackageChange, "id" | "timestamp">) => void;
+  logChange: (change: Omit<PackageChange, 'id' | 'timestamp'>) => void;
   validatePrerequisites: (packageId: string, moduleId?: string) => { valid: boolean; missing: string[] };
-  setFloatingCardMinimized: (b: boolean) => void;
+  setFloatingCardMinimized: (minimized: boolean) => void;
   calculateTotalEffort: () => number;
   getSelectedPackages: () => SAPPackage[];
   calculateComplexityMultiplier: () => number;
-  generateRiskAssessment: () => RiskAssessmentT;
+  generateRiskAssessment: () => RiskAssessment;
+  generateBundleAnalysis: () => BundleAnalysis;
+  generateImplementationPlan: () => ImplementationPhase[];
 }
 
-const DEFAULT_USER_ROLE: UserRole = {
-  name: "Senior Consultant",
-  permissions: {
-    canEdit: true,
-    canDelete: false,
-    canViewPricing: true,
-    canExport: true,
-    canManageUsers: false,
-    canViewAnalytics: true
+// ======================== SAMPLE DATA ========================
+
+const COMPLETE_PACKAGE_LIBRARY: SAPPackage[] = [
+  {
+    id: "financial_master_data",
+    name: "Financial Master Data Management",
+    category: "Finance Core",
+    description: "GL setup, cost centers, organizational structure",
+    total_effort_pd: 192.9,
+    sgd_price: 135000,
+    layer: "core",
+    type: "core",
+    icon: "💰",
+    malaysia_verified: true,
+    critical_path: true,
+    prerequisites: [],
+    source: "Core SAP Finance",
+    modules: [
+      { id: "gl_setup", name: "General Ledger Setup", description: "Chart of accounts, fiscal year", effort_pd: 45, prerequisites: [], selected: false },
+      { id: "cost_centers", name: "Cost Center Management", description: "Cost center hierarchy and allocation", effort_pd: 38, prerequisites: ["gl_setup"], selected: false },
+      { id: "profit_centers", name: "Profit Center Accounting", description: "Profitability analysis setup", effort_pd: 32, prerequisites: ["gl_setup"], selected: false },
+      { id: "company_code", name: "Company Code Configuration", description: "Legal entity setup", effort_pd: 28, prerequisites: [], selected: false },
+      { id: "currency_config", name: "Currency Configuration", description: "Multi-currency setup for Malaysia", effort_pd: 25, prerequisites: ["company_code"], selected: false, malaysia_verified: true },
+      { id: "tax_setup", name: "Tax Configuration", description: "SST, GST, withholding tax setup", effort_pd: 24.9, prerequisites: ["company_code"], selected: false, malaysia_verified: true }
+    ],
+    expanded: false,
+    selected: false
   },
-  region: "ABMY"
+  {
+    id: "procurement_inventory",
+    name: "Procurement & Inventory Management",
+    category: "Finance Core",
+    description: "Automated P2P accounting",
+    total_effort_pd: 90.0,
+    sgd_price: 63000,
+    layer: "core",
+    type: "core",
+    icon: "📦",
+    malaysia_verified: true,
+    critical_path: false,
+    prerequisites: ["financial_master_data"],
+    source: "Core SAP Finance",
+    modules: [
+      { id: "po_processing", name: "Purchase Order Processing", description: "Automated PO workflows", effort_pd: 30, prerequisites: [], selected: false },
+      { id: "inventory_mgmt", name: "Inventory Management", description: "Stock movements and valuation", effort_pd: 35, prerequisites: [], selected: false },
+      { id: "vendor_mgmt", name: "Vendor Management", description: "Supplier master data", effort_pd: 25, prerequisites: [], selected: false }
+    ],
+    expanded: false,
+    selected: false
+  }
+];
+
+const MALAYSIA_FORMS_LIBRARY: MalaysiaForm[] = [
+  {
+    id: "sst_form",
+    form_name: "SST Return Form",
+    category: "Statutory",
+    mandatory: true,
+    effort_pd: 15,
+    description: "Sales and Service Tax return filing",
+    regulatory_body: "Royal Malaysian Customs Department",
+    selected: false,
+    sap_module: "FI-CA"
+  }
+];
+
+const PROJECT_SERVICES_LIBRARY: ProjectService[] = [
+  {
+    id: "project_mgmt",
+    service_name: "Project Management",
+    category: "Project Management",
+    effort_pd: 120,
+    description: "End-to-end project coordination",
+    mandatory: true,
+    selected: false
+  }
+];
+
+const DEFAULT_USER_ROLE: UserRole = {
+  type: 'user',
+  permissions: {
+    view_packages: true,
+    edit_packages: false,
+    create_packages: false,
+    delete_packages: false,
+    export_library: false
+  }
 };
+
+const SUPER_USER_ROLE: UserRole = {
+  type: 'super_user',
+  permissions: {
+    view_packages: true,
+    edit_packages: true,
+    create_packages: true,
+    delete_packages: true,
+    export_library: true
+  }
+};
+
+// ======================== CONTEXT SETUP ========================
 
 const AppContext = createContext<AppContextType | null>(null);
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<AppState>({
     packages: [...COMPLETE_PACKAGE_LIBRARY],
     integrations: [],
     malaysiaForms: [...MALAYSIA_FORMS_LIBRARY],
     projectServices: [...PROJECT_SERVICES_LIBRARY],
     clientProfile: {
-      company_name: "",
-      industry: "services",
-      company_size: "mid_market",
-      system_landscape: "greenfield",
-      client_maturity: "sap_experienced",
-      legal_entities: 1,
+      company_name: '',
+      industry: 'services',
+      company_size: 'mid_market',
+      system_landscape: 'greenfield',
+      client_maturity: 'sap_experienced',
+      legal_entities: 1
     },
-    selectedView: "packages",
+    selectedView: 'packages',
     btpIntegrationEnabled: false,
     userRole: DEFAULT_USER_ROLE,
     adminMode: false,
     packageChanges: [],
     editingPackage: null,
     editingModule: null,
-    floatingCardMinimized: false,
+    floatingCardMinimized: false
   });
 
-  // Package management functions
-  const updatePackage = useCallback((id: string, updates: Partial<SAPPackage>) => {
-    setState((prev) => ({
-      ...prev,
-      packages: prev.packages.map((p) => (p.id === id ? { ...p, ...updates } : p)),
-    }));
-    logChange({
-      type: 'package_updated',
-      packageId: id,
-      description: `Package ${id} updated`,
-      userId: state.userRole.name
-    });
-  }, [state.userRole.name]);
-
-  const addPackage = useCallback((pkg: Omit<SAPPackage, "id" | "expanded" | "selected">) => {
-    const newPackage: SAPPackage = {
-      ...pkg,
-      id: `pkg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      expanded: false,
-      selected: false
-    };
-    setState((prev) => ({
-      ...prev,
-      packages: [...prev.packages, newPackage],
-    }));
-    logChange({
-      type: 'package_added',
-      packageId: newPackage.id,
-      description: `Package ${newPackage.name} added`,
-      userId: state.userRole.name
-    });
-  }, [state.userRole.name]);
-
-  const deletePackage = useCallback((id: string) => {
-    setState((prev) => ({
-      ...prev,
-      packages: prev.packages.filter(p => p.id !== id),
-    }));
-    logChange({
-      type: 'package_deleted',
-      packageId: id,
-      description: `Package ${id} deleted`,
-      userId: state.userRole.name
-    });
-  }, [state.userRole.name]);
-
-  // Module management functions  
-  const addModule = useCallback((packageId: string, mod: Omit<SAPModule, "id" | "selected">) => {
-    const newModule: SAPModule = {
-      ...mod,
-      id: `mod_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      selected: false
-    };
-    
-    setState((prev) => ({
-      ...prev,
-      packages: prev.packages.map(p => 
-        p.id === packageId 
-          ? { ...p, modules: [...p.modules, newModule] }
-          : p
-      ),
-    }));
-    logChange({
-      type: 'module_added',
-      packageId,
-      moduleId: newModule.id,
-      description: `Module ${newModule.name} added to package ${packageId}`,
-      userId: state.userRole.name
-    });
-  }, [state.userRole.name]);
-
-  const updateModule = useCallback((packageId: string, moduleId: string, updates: Partial<SAPModule>) => {
-    setState((prev) => ({
-      ...prev,
-      packages: prev.packages.map(p => 
-        p.id === packageId 
-          ? {
-              ...p,
-              modules: p.modules.map(m => 
-                m.id === moduleId ? { ...m, ...updates } : m
-              )
-            }
-          : p
-      ),
-    }));
-    logChange({
-      type: 'module_updated',
-      packageId,
-      moduleId,
-      description: `Module ${moduleId} updated in package ${packageId}`,
-      userId: state.userRole.name
-    });
-  }, [state.userRole.name]);
-
-  const deleteModule = useCallback((packageId: string, moduleId: string) => {
-    setState((prev) => ({
-      ...prev,
-      packages: prev.packages.map(p => 
-        p.id === packageId 
-          ? { ...p, modules: p.modules.filter(m => m.id !== moduleId) }
-          : p
-      ),
-    }));
-    logChange({
-      type: 'module_deleted',
-      packageId,
-      moduleId,
-      description: `Module ${moduleId} deleted from package ${packageId}`,
-      userId: state.userRole.name
-    });
-  }, [state.userRole.name]);
-
-  // Other management functions
-  const updateClientProfile = useCallback((updates: Partial<ClientProfile>) => {
-    setState((prev) => ({
-      ...prev,
-      clientProfile: { ...prev.clientProfile, ...updates },
-    }));
-  }, []);
-
-  const setSelectedView = useCallback((view: string) => {
-    setState((prev) => ({ ...prev, selectedView: view }));
-  }, []);
-
-  const addIntegration = useCallback((integration: Omit<Integration, 'id'>) => {
-    const newIntegration: Integration = {
-      ...integration,
-      id: `int_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    };
-    setState((prev) => ({
-      ...prev,
-      integrations: [...prev.integrations, newIntegration],
-    }));
-  }, []);
-
-  const removeIntegration = useCallback((id: string) => {
-    setState((prev) => ({
-      ...prev,
-      integrations: prev.integrations.filter(int => int.id !== id),
-    }));
-  }, []);
-
-  const updateIntegration = useCallback((id: string, updates: Partial<Integration>) => {
-    setState((prev) => ({
-      ...prev,
-      integrations: prev.integrations.map(int => 
-        int.id === id ? { ...int, ...updates } : int
-      ),
-    }));
-  }, []);
-
-  const updateMalaysiaForm = useCallback((id: string, updates: Partial<MalaysiaForm>) => {
-    setState((prev) => ({
-      ...prev,
-      malaysiaForms: prev.malaysiaForms.map(form => 
-        form.id === id ? { ...form, ...updates } : form
-      ),
-    }));
-  }, []);
-
-  const updateProjectService = useCallback((id: string, updates: Partial<ProjectService>) => {
-    setState((prev) => ({
-      ...prev,
-      projectServices: prev.projectServices.map(service => 
-        service.id === id ? { ...service, ...updates } : service
-      ),
-    }));
-  }, []);
-
-  const setBtpIntegrationEnabled = useCallback((enabled: boolean) => {
-    setState((prev) => ({ ...prev, btpIntegrationEnabled: enabled }));
-  }, []);
-
-  const setAdminMode = useCallback((enabled: boolean) => {
-    setState((prev) => ({ ...prev, adminMode: enabled }));
-  }, []);
-
-  const setFloatingCardMinimized = useCallback((minimized: boolean) => {
-    setState((prev) => ({ ...prev, floatingCardMinimized: minimized }));
-  }, []);
-
-  // Utility functions
-  const duplicatePackage = useCallback((id: string) => {
-    const original = state.packages.find(p => p.id === id);
-    if (!original) return;
-
-    const duplicate: SAPPackage = {
-      ...original,
-      id: `pkg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      name: `${original.name} (Copy)`,
-      selected: false,
-      expanded: false,
-      modules: original.modules.map(m => ({
-        ...m,
-        id: `mod_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        selected: false
-      }))
-    };
-
-    setState((prev) => ({
-      ...prev,
-      packages: [...prev.packages, duplicate],
-    }));
-    
-    logChange({
-      type: 'package_duplicated',
-      packageId: duplicate.id,
-      description: `Package ${original.name} duplicated`,
-      userId: state.userRole.name
-    });
-  }, [state.packages, state.userRole.name]);
-
-  const exportLibrary = useCallback(() => {
-    const exportData = {
-      packages: state.packages,
-      timestamp: new Date().toISOString(),
-      version: "1.0"
-    };
-    
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-      type: 'application/json'
-    });
-    
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `sap-package-library-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [state.packages]);
-
-  const importLibrary = useCallback((data: any) => {
-    try {
-      if (data.packages && Array.isArray(data.packages)) {
-        setState((prev) => ({
-          ...prev,
-          packages: data.packages,
+  // Admin mode toggle via keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.key === 'A') {
+        setState(prev => ({ 
+          ...prev, 
+          adminMode: !prev.adminMode,
+          userRole: !prev.adminMode ? SUPER_USER_ROLE : DEFAULT_USER_ROLE
         }));
-        logChange({
-          type: 'library_imported',
-          description: `Library imported with ${data.packages.length} packages`,
-          userId: state.userRole.name
-        });
       }
-    } catch (error) {
-      console.error('Error importing library:', error);
-    }
-  }, [state.userRole.name]);
-
-  const logChange = useCallback((change: Omit<PackageChange, "id" | "timestamp">) => {
-    const newChange: PackageChange = {
-      ...change,
-      id: `chg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      timestamp: new Date(),
     };
-    setState((prev) => ({
-      ...prev,
-      packageChanges: [newChange, ...prev.packageChanges].slice(0, 200),
-    }));
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const validatePrerequisites = useCallback((packageId: string, moduleId?: string) => {
     const pkg = state.packages.find(p => p.id === packageId);
     if (!pkg) return { valid: true, missing: [] };
 
-    // If moduleId is provided, validate module prerequisites
+    const selectedPackageIds = state.packages.filter(p => p.selected).map(p => p.id);
+    const selectedModuleIds = state.packages.flatMap(p => p.modules.filter(m => m.selected).map(m => m.id));
+
+    // Check package prerequisites
+    const missingPackagePrereqs = pkg.prerequisites.filter(prereqId => 
+      !selectedPackageIds.includes(prereqId)
+    );
+
+    // Check module prerequisites if moduleId provided
+    let missingModulePrereqs: string[] = [];
     if (moduleId) {
       const module = pkg.modules.find(m => m.id === moduleId);
-      if (!module) return { valid: true, missing: [] };
-
-      const selectedModuleIds = pkg.modules.filter(m => m.selected).map(m => m.id);
-      const missing = module.prerequisites.filter(prereq => !selectedModuleIds.includes(prereq));
-      
-      return {
-        valid: missing.length === 0,
-        missing
-      };
+      if (module) {
+        missingModulePrereqs = module.prerequisites.filter(prereqId => 
+          !selectedModuleIds.includes(prereqId)
+        );
+      }
     }
 
-    // Validate package prerequisites
-    const selectedPackageIds = state.packages.filter(p => p.selected).map(p => p.id);
-    const missing = pkg.prerequisites.filter(prereq => !selectedPackageIds.includes(prereq));
-    
+    const allMissing = [...missingPackagePrereqs, ...missingModulePrereqs];
     return {
-      valid: missing.length === 0,
-      missing
+      valid: allMissing.length === 0,
+      missing: allMissing
     };
   }, [state.packages]);
 
-  // Calculation functions
-  const calculateTotalEffort = useCallback(() => {
-    return state.packages.reduce((total, pkg) => {
-      if (pkg.selected) {
-        return total + pkg.total_effort_pd;
+  const updatePackage = useCallback((id: string, updates: Partial<SAPPackage>) => {
+    setState(prev => {
+      const oldPackage = prev.packages.find(p => p.id === id);
+      const newPackages = prev.packages.map(pkg => 
+        pkg.id === id ? { ...pkg, ...updates } : pkg
+      );
+      
+      // Log the change if admin
+      if (prev.adminMode && oldPackage) {
+        const change: Omit<PackageChange, 'id' | 'timestamp'> = {
+          user: 'Admin',
+          type: 'update',
+          packageId: id,
+          before: oldPackage,
+          after: { ...oldPackage, ...updates },
+          reason: 'Package updated via admin interface'
+        };
+        
+        const newChange: PackageChange = {
+          ...change,
+          id: `chg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          timestamp: new Date()
+        };
+
+        return {
+          ...prev,
+          packages: newPackages,
+          packageChanges: [newChange, ...prev.packageChanges].slice(0, 100)
+        };
       }
       
-      // Calculate partial selection effort
-      const selectedModules = pkg.modules.filter(m => m.selected);
-      const moduleEffort = selectedModules.reduce((sum, mod) => sum + mod.effort_pd, 0);
-      return total + moduleEffort;
-    }, 0);
-  }, [state.packages]);
+      return { ...prev, packages: newPackages };
+    });
+  }, []);
 
-  const getSelectedPackages = useCallback(() => {
+  const updateClientProfile = useCallback((updates: Partial<ClientProfile>) => {
+    setState(prev => ({
+      ...prev,
+      clientProfile: { ...prev.clientProfile, ...updates }
+    }));
+  }, []);
+
+  const setSelectedView = useCallback((view: 'packages' | 'integrations' | 'forms' | 'services') => {
+    setState(prev => ({ ...prev, selectedView: view }));
+  }, []);
+
+  const addIntegration = useCallback((integration: Omit<Integration, 'id'>) => {
+    const newIntegration: Integration = {
+      ...integration,
+      id: `int_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    setState(prev => ({
+      ...prev,
+      integrations: [...prev.integrations, newIntegration]
+    }));
+  }, []);
+
+  const removeIntegration = useCallback((id: string) => {
+    setState(prev => ({
+      ...prev,
+      integrations: prev.integrations.filter(int => int.id !== id)
+    }));
+  }, []);
+
+  const updateIntegration = useCallback((id: string, updates: Partial<Integration>) => {
+    setState(prev => ({
+      ...prev,
+      integrations: prev.integrations.map(int =>
+        int.id === id ? { ...int, ...updates } : int
+      )
+    }));
+  }, []);
+
+  const updateMalaysiaForm = useCallback((id: string, updates: Partial<MalaysiaForm>) => {
+    setState(prev => ({
+      ...prev,
+      malaysiaForms: prev.malaysiaForms.map(form =>
+        form.id === id ? { ...form, ...updates } : form
+      )
+    }));
+  }, []);
+
+  const updateProjectService = useCallback((id: string, updates: Partial<ProjectService>) => {
+    setState(prev => ({
+      ...prev,
+      projectServices: prev.projectServices.map(service =>
+        service.id === id ? { ...service, ...updates } : service
+      )
+    }));
+  }, []);
+
+  const setBtpIntegrationEnabled = useCallback((enabled: boolean) => {
+    setState(prev => ({ ...prev, btpIntegrationEnabled: enabled }));
+  }, []);
+
+  const setAdminMode = useCallback((enabled: boolean) => {
+    setState(prev => ({ 
+      ...prev, 
+      adminMode: enabled,
+      userRole: enabled ? SUPER_USER_ROLE : DEFAULT_USER_ROLE
+    }));
+  }, []);
+
+  const addPackage = useCallback((pkg: Omit<SAPPackage, 'id'>) => {
+    const newPackage: SAPPackage = {
+      ...pkg,
+      id: `pkg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    setState(prev => ({
+      ...prev,
+      packages: [...prev.packages, newPackage]
+    }));
+  }, []);
+
+  const deletePackage = useCallback((id: string) => {
+    setState(prev => ({
+      ...prev,
+      packages: prev.packages.filter(pkg => pkg.id !== id)
+    }));
+  }, []);
+
+  const addModule = useCallback((packageId: string, module: Omit<SAPModule, 'id'>) => {
+    const newModule: SAPModule = {
+      ...module,
+      id: `mod_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    };
+    setState(prev => ({
+      ...prev,
+      packages: prev.packages.map(pkg =>
+        pkg.id === packageId
+          ? {
+              ...pkg,
+              modules: [...pkg.modules, newModule],
+              total_effort_pd: pkg.total_effort_pd + newModule.effort_pd
+            }
+          : pkg
+      )
+    }));
+  }, []);
+
+  const updateModule = useCallback((packageId: string, moduleId: string, updates: Partial<SAPModule>) => {
+    setState(prev => ({
+      ...prev,
+      packages: prev.packages.map(pkg =>
+        pkg.id === packageId
+          ? {
+              ...pkg,
+              modules: pkg.modules.map(mod => 
+                mod.id === moduleId ? { ...mod, ...updates } : mod
+              ),
+              total_effort_pd: pkg.modules.reduce((sum, m) => 
+                sum + (m.id === moduleId ? (updates.effort_pd || m.effort_pd) : m.effort_pd), 0
+              )
+            }
+          : pkg
+      )
+    }));
+  }, []);
+
+  const deleteModule = useCallback((packageId: string, moduleId: string) => {
+    setState(prev => ({
+      ...prev,
+      packages: prev.packages.map(pkg => 
+        pkg.id === packageId 
+          ? {
+              ...pkg,
+              modules: pkg.modules.filter(mod => mod.id !== moduleId),
+              total_effort_pd: pkg.modules.filter(mod => mod.id !== moduleId).reduce((sum, m) => sum + m.effort_pd, 0)
+            }
+          : pkg
+      )
+    }));
+  }, []);
+
+  const duplicatePackage = useCallback((id: string) => {
+    setState(prev => {
+      const packageToDupe = prev.packages.find(p => p.id === id);
+      if (!packageToDupe) return prev;
+      
+      const newPackage: SAPPackage = {
+        ...packageToDupe,
+        id: `pkg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: `${packageToDupe.name} (Copy)`,
+        modules: packageToDupe.modules.map(mod => ({
+          ...mod,
+          id: `mod_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          selected: false
+        })),
+        expanded: false,
+        selected: false
+      };
+      
+      return {
+        ...prev,
+        packages: [...prev.packages, newPackage]
+      };
+    });
+  }, []);
+
+  const exportLibrary = useCallback(() => {
+    const exportData = {
+      packages: state.packages,
+      malaysiaForms: state.malaysiaForms,
+      projectServices: state.projectServices,
+      changes: state.packageChanges,
+      timestamp: new Date().toISOString(),
+      version: '2.1.0'
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sap-package-library-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [state]);
+
+  const importLibrary = useCallback((data: any) => {
+    try {
+      setState(prev => ({
+        ...prev,
+        packages: data.packages || prev.packages,
+        malaysiaForms: data.malaysiaForms || prev.malaysiaForms,
+        projectServices: data.projectServices || prev.projectServices
+      }));
+    } catch (error) {
+      console.error('Import failed:', error);
+    }
+  }, []);
+
+  const logChange = useCallback((change: Omit<PackageChange, 'id' | 'timestamp'>) => {
+    const newChange: PackageChange = {
+      ...change,
+      id: `chg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date()
+    };
+
+    setState(prev => ({
+      ...prev,
+      packageChanges: [newChange, ...prev.packageChanges].slice(0, 100)
+    }));
+  }, []);
+
+  const calculateTotalEffort = useCallback((): number => {
+    let totalEffort = 0;
+
+    state.packages.forEach(pkg => {
+      if (pkg.selected) {
+        totalEffort += pkg.total_effort_pd;
+      } else {
+        pkg.modules.forEach(module => {
+          if (module.selected) {
+            totalEffort += module.effort_pd;
+          }
+        });
+      }
+    });
+
+    state.integrations.forEach(integration => {
+      totalEffort += integration.effort_pd;
+    });
+
+    state.malaysiaForms.forEach(form => {
+      if (form.selected) {
+        totalEffort += form.effort_pd;
+      }
+    });
+
+    state.projectServices.forEach(service => {
+      if (service.selected) {
+        totalEffort += service.effort_pd;
+      }
+    });
+
+    return totalEffort;
+  }, [state]);
+
+  const getSelectedPackages = useCallback((): SAPPackage[] => {
     return state.packages.filter(pkg => pkg.selected || pkg.modules.some(m => m.selected));
   }, [state.packages]);
 
-  const calculateComplexityMultiplier = useCallback(() => {
-    const profile = state.clientProfile;
-    let multiplier = 1.0;
-
-    // Company size factor
-    const sizeFactors = {
-      startup: 0.8,
-      small_business: 0.9,
-      mid_market: 1.0,
-      enterprise: 1.2,
-      global_enterprise: 1.4
-    };
-    multiplier *= sizeFactors[profile.company_size] || 1.0;
-
-    // System landscape factor  
-    const landscapeFactors = {
-      greenfield: 0.9,
-      brownfield_light: 1.0,
-      brownfield_heavy: 1.2,
-      hybrid_cloud: 1.1
-    };
-    multiplier *= landscapeFactors[profile.system_landscape] || 1.0;
-
-    // Client maturity factor
-    const maturityFactors = {
-      sap_new: 1.3,
-      sap_experienced: 1.0,
-      sap_expert: 0.8
-    };
-    multiplier *= maturityFactors[profile.client_maturity] || 1.0;
-
-    // Legal entities factor (for complexity)
-    if (profile.legal_entities > 1) {
-      multiplier *= (1 + (profile.legal_entities - 1) * 0.1);
-    }
-
-    return Math.round(multiplier * 100) / 100;
-  }, [state.clientProfile]);
-
-  const generateRiskAssessment = useCallback((): RiskAssessmentT => {
+  const calculateComplexityMultiplier = useCallback((): number => {
     const selectedPackages = getSelectedPackages();
-    const totalEffort = calculateTotalEffort();
-    const complexityMultiplier = calculateComplexityMultiplier();
-    
-    let riskScore = 0;
-    const risks: string[] = [];
-    
-    // High effort projects carry more risk
-    if (totalEffort > 200) {
-      riskScore += 2;
-      risks.push("High effort project (>200 PD)");
-    } else if (totalEffort > 100) {
-      riskScore += 1;
-      risks.push("Medium effort project (>100 PD)");
-    }
-    
-    // Complex client profiles increase risk
-    if (complexityMultiplier > 1.2) {
-      riskScore += 2;
-      risks.push("High complexity client profile");
-    } else if (complexityMultiplier > 1.1) {
-      riskScore += 1;
-      risks.push("Medium complexity client profile");
-    }
-    
-    // Multiple packages increase integration risk
-    if (selectedPackages.length > 3) {
-      riskScore += 1;
-      risks.push("Multiple package integration complexity");
-    }
-    
-    // Critical path packages increase risk
-    const criticalPackages = selectedPackages.filter(pkg => pkg.critical_path);
-    if (criticalPackages.length > 0) {
-      riskScore += criticalPackages.length;
-      risks.push(`${criticalPackages.length} critical path package(s)`);
-    }
-    
-    // New SAP clients have higher risk
-    if (state.clientProfile.client_maturity === 'sap_new') {
-      riskScore += 2;
-      risks.push("Client new to SAP ecosystem");
-    }
-    
-    // Determine risk level
-    let riskLevel: 'low' | 'medium' | 'high';
-    if (riskScore <= 2) {
-      riskLevel = 'low';
-    } else if (riskScore <= 5) {
-      riskLevel = 'medium';
-    } else {
-      riskLevel = 'high';
-    }
-    
-    return {
-      riskLevel,
-      riskScore,
-      risks,
-      recommendations: generateRiskRecommendations(riskLevel, risks)
-    };
-  }, [state.clientProfile, getSelectedPackages, calculateTotalEffort, calculateComplexityMultiplier]);
+    const baseMultiplier = 1.0;
+    const complexityFactors = selectedPackages.length * 0.1;
+    return Math.max(baseMultiplier, baseMultiplier + complexityFactors);
+  }, [getSelectedPackages]);
 
-  const generateRiskRecommendations = (riskLevel: string, risks: string[]): string[] => {
-    const recommendations: string[] = [];
-    
-    if (riskLevel === 'high') {
-      recommendations.push("Consider phased implementation approach");
-      recommendations.push("Allocate additional contingency time (20-30%)");
-      recommendations.push("Ensure senior resources are allocated");
-      recommendations.push("Conduct detailed risk mitigation planning");
-    } else if (riskLevel === 'medium') {
-      recommendations.push("Monitor critical milestones closely");
-      recommendations.push("Allocate contingency time (10-15%)");
-      recommendations.push("Regular stakeholder communication");
-    } else {
-      recommendations.push("Standard project management approach");
-      recommendations.push("Regular progress reviews");
-    }
-    
-    // Risk-specific recommendations
-    if (risks.some(r => r.includes("new to SAP"))) {
-      recommendations.push("Provide comprehensive SAP training");
-      recommendations.push("Consider knowledge transfer sessions");
-    }
-    
-    if (risks.some(r => r.includes("critical path"))) {
-      recommendations.push("Prioritize critical path package testing");
-      recommendations.push("Ensure backup resources for critical components");
-    }
-    
-    if (risks.some(r => r.includes("integration complexity"))) {
-      recommendations.push("Conduct integration testing early and frequently");
-      recommendations.push("Consider dedicated integration specialist");
-    }
-    
-    return recommendations;
+  const generateRiskAssessment = useCallback((): RiskAssessment => {
+    const selectedPackages = getSelectedPackages();
+    const risks: RiskAssessment = {
+      overall_risk: 'LOW',
+      specific_risks: [],
+      fricew_risks: []
+    };
+
+    // Generate specific risks based on selected packages
+    selectedPackages.forEach(pkg => {
+      if (pkg.critical_path) {
+        risks.specific_risks.push({
+          package: pkg.name,
+          risk: 'Critical path dependency',
+          likelihood: 'MEDIUM',
+          impact: 'HIGH',
+          mitigation: 'Ensure prerequisite packages are implemented first'
+        });
+      }
+    });
+
+    const categories = new Set(selectedPackages.map(pkg => pkg.category.split(' ')[0]));
+    categories.forEach(category => {
+      let likelihood: 'LOW' | 'MEDIUM' | 'HIGH' = 'MEDIUM';
+      if (category === 'Finance' || category === 'HCM') likelihood = 'HIGH';
+      
+      risks.fricew_risks.push({
+        category,
+        likelihood,
+        impact: 'HIGH'
+      });
+    });
+
+    const highRisks = risks.specific_risks.filter(r => r.impact === 'HIGH').length;
+    if (highRisks >= 3) risks.overall_risk = 'HIGH';
+    else if (highRisks >= 1) risks.overall_risk = 'MEDIUM';
+    else risks.overall_risk = 'LOW';
+
+    return risks;
+  }, [getSelectedPackages]);
+
+  const generateBundleAnalysis = useCallback((): BundleAnalysis => {
+    return { bundle_opportunities: [], recommendations: [] };
+  }, []);
+
+  const generateImplementationPlan = useCallback((): ImplementationPhase[] => {
+    return [];
+  }, []);
+
+  const setFloatingCardMinimized = useCallback((minimized: boolean) => {
+    setState(prev => ({ ...prev, floatingCardMinimized: minimized }));
+  }, []);
+
+  const value = {
+    state,
+    updatePackage,
+    updateClientProfile,
+    setSelectedView,
+    addIntegration,
+    removeIntegration,
+    updateIntegration,
+    updateMalaysiaForm,
+    updateProjectService,
+    setBtpIntegrationEnabled,
+    setAdminMode,
+    addPackage,
+    deletePackage,
+    addModule,
+    updateModule,
+    deleteModule,
+    duplicatePackage,
+    exportLibrary,
+    importLibrary,
+    logChange,
+    validatePrerequisites,
+    setFloatingCardMinimized,
+    calculateTotalEffort,
+    getSelectedPackages,
+    calculateComplexityMultiplier,
+    generateRiskAssessment,
+    generateBundleAnalysis,
+    generateImplementationPlan
   };
 
-  const contextValue = useMemo(() => ({
-    state,
-    updatePackage,
-    updateClientProfile,
-    setSelectedView,
-    addIntegration,
-    removeIntegration,
-    updateIntegration,
-    updateMalaysiaForm,
-    updateProjectService,
-    setBtpIntegrationEnabled,
-    setAdminMode,
-    addPackage,
-    deletePackage,
-    addModule,
-    updateModule,
-    deleteModule,
-    duplicatePackage,
-    exportLibrary,
-    importLibrary,
-    logChange,
-    validatePrerequisites,
-    setFloatingCardMinimized,
-    calculateTotalEffort,
-    getSelectedPackages,
-    calculateComplexityMultiplier,
-    generateRiskAssessment,
-  }), [
-    state,
-    updatePackage,
-    updateClientProfile,
-    setSelectedView,
-    addIntegration,
-    removeIntegration,
-    updateIntegration,
-    updateMalaysiaForm,
-    updateProjectService,
-    setBtpIntegrationEnabled,
-    setAdminMode,
-    addPackage,
-    deletePackage,
-    addModule,
-    updateModule,
-    deleteModule,
-    duplicatePackage,
-    exportLibrary,
-    importLibrary,
-    logChange,
-    validatePrerequisites,
-    setFloatingCardMinimized,
-    calculateTotalEffort,
-    getSelectedPackages,
-    calculateComplexityMultiplier,
-    generateRiskAssessment,
-  ]);
-
-  return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
 
-export const useApp = () => {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error("useApp must be used within AppProvider");
-  return ctx;
+const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error('useApp must be used within AppProvider');
+  }
+  return context;
 };
 
 export default AppProvider;
-
-// ===================================================================
-// 2. UPDATED App.jsx - Integration with New Package Components
-// ===================================================================
-
-// Add this section to your existing App.jsx to replace the monolithic package selection
-
-import React, { useState } from 'react';
-import { PackageSelector, PackageStats } from './components/PackageSelector';
-import { AIEstimationPanel } from './components/AIEstimationPanel';
-import AppProvider, { useApp } from './components/AppProvider';
-
-// Replace the existing package selection section in your App.jsx with this:
-
-const PackageSelectionSection = () => {
-  const { state, setSelectedView } = useApp();
-  
-  return (
-    <div className="package-selection-section">
-      <div className="section-header">
-        <h2 className="section-title">SAP Package Selection</h2>
-        <div className="view-toggles">
-          <button
-            className={`view-toggle ${state.selectedView === 'packages' ? 'active' : ''}`}
-            onClick={() => setSelectedView('packages')}
-          >
-            📦 Packages
-          </button>
-          <button
-            className={`view-toggle ${state.selectedView === 'estimation' ? 'active' : ''}`}
-            onClick={() => setSelectedView('estimation')}
-          >
-            🤖 AI Estimation
-          </button>
-        </div>
-      </div>
-      
-      {state.selectedView === 'packages' ? (
-        <PackageSelector />
-      ) : (
-        <AIEstimationPanel />
-      )}
-      
-      <style jsx>{`
-        .package-selection-section {
-          margin-bottom: 32px;
-        }
-        
-        .section-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 24px;
-          flex-wrap: wrap;
-          gap: 16px;
-        }
-        
-        .section-title {
-          margin: 0;
-          font-size: 24px;
-          font-weight: 700;
-          color: #111827;
-          letter-spacing: -0.02em;
-        }
-        
-        .view-toggles {
-          display: flex;
-          gap: 8px;
-          background: #f3f4f6;
-          padding: 4px;
-          border-radius: 12px;
-        }
-        
-        .view-toggle {
-          padding: 8px 16px;
-          background: transparent;
-          border: none;
-          border-radius: 8px;
-          font-size: 13px;
-          font-weight: 600;
-          color: #6b7280;
-          cursor: pointer;
-          transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-        }
-        
-        .view-toggle:hover {
-          color: #374151;
-          background: rgba(255, 255, 255, 0.7);
-        }
-        
-        .view-toggle.active {
-          background: white;
-          color: #3b82f6;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-      `}</style>
-    </div>
-  );
-};
-
-// ===================================================================
-// 3. PERFORMANCE OPTIMIZATION HOOKS
-// ===================================================================
-
-import { useMemo, useCallback } from 'react';
-
-// Custom hook for package filtering performance
-export const usePackageFiltering = (packages: SAPPackage[]) => {
-  const filterPackages = useCallback((
-    searchTerm: string,
-    selectedCategories: string[],
-    showMalaysiaOnly: boolean,
-    showCriticalPath: boolean
-  ) => {
-    return packages.filter(pkg => {
-      // Search term filter
-      if (searchTerm) {
-        const searchLower = searchTerm.toLowerCase();
-        const matchesPackage = pkg.name.toLowerCase().includes(searchLower) ||
-                              pkg.description.toLowerCase().includes(searchLower);
-        const matchesModules = pkg.modules.some(module =>
-          module.name.toLowerCase().includes(searchLower) ||
-          module.description.toLowerCase().includes(searchLower)
-        );
-        if (!matchesPackage && !matchesModules) return false;
-      }
-      
-      // Category filter
-      if (selectedCategories.length > 0 && !selectedCategories.includes(pkg.category)) {
-        return false;
-      }
-      
-      // Malaysia filter
-      if (showMalaysiaOnly && !pkg.malaysia_verified) {
-        return false;
-      }
-      
-      // Critical path filter
-      if (showCriticalPath && !pkg.critical_path) {
-        return false;
-      }
-      
-      return true;
-    });
-  }, [packages]);
-  
-  return filterPackages;
-};
-
-// Custom hook for package statistics
-export const usePackageStats = (packages: SAPPackage[]) => {
-  return useMemo(() => {
-    const selectedPackages = packages.filter(pkg => pkg.selected || pkg.modules.some(m => m.selected));
-    
-    const totalModules = selectedPackages.reduce((sum, pkg) => 
-      sum + pkg.modules.filter(mod => mod.selected).length, 0
-    );
-    
-    const totalEffort = selectedPackages.reduce((total, pkg) => {
-      if (pkg.selected) {
-        return total + pkg.total_effort_pd;
-      }
-      
-      const selectedModules = pkg.modules.filter(m => m.selected);
-      const moduleEffort = selectedModules.reduce((sum, mod) => sum + mod.effort_pd, 0);
-      return total + moduleEffort;
-    }, 0);
-    
-    return {
-      packages: selectedPackages.length,
-      modules: totalModules,
-      effort: totalEffort,
-      weeks: Math.ceil(totalEffort / 8),
-      estimatedCost: totalEffort * 700 * 3.5 // Rough MYR estimate
-    };
-  }, [packages]);
-};
-
-// ===================================================================
-// 4. ANIMATION & TRANSITION UTILITIES
-// ===================================================================
-
-// CSS-in-JS animation utilities for Steve Jobs level smoothness
-export const animations = {
-  // Slide down animation for expanded content
-  slideDown: `
-    @keyframes slideDown {
-      from {
-        opacity: 0;
-        transform: translateY(-10px);
-        max-height: 0;
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-        max-height: 500px;
-      }
-    }
-  `,
-  
-  // Smooth scale animation for interactive elements
-  scaleIn: `
-    @keyframes scaleIn {
-      from {
-        opacity: 0;
-        transform: scale(0.95);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1);
-      }
-    }
-  `,
-  
-  // Gentle bounce for success states
-  bounce: `
-    @keyframes bounce {
-      0%, 20%, 53%, 80%, 100% {
-        animation-timing-function: cubic-bezier(0.215, 0.610, 0.355, 1.000);
-        transform: translate3d(0,0,0);
-      }
-      40%, 43% {
-        animation-timing-function: cubic-bezier(0.755, 0.050, 0.855, 0.060);
-        transform: translate3d(0, -5px, 0);
-      }
-      70% {
-        animation-timing-function: cubic-bezier(0.755, 0.050, 0.855, 0.060);
-        transform: translate3d(0, -2px, 0);
-      }
-      90% {
-        transform: translate3d(0,-1px,0);
-      }
-    }
-  `,
-  
-  // Fade in animation for content loading
-  fadeIn: `
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-      }
-      to {
-        opacity: 1;
-      }
-    }
-  `
-};
-
-// ===================================================================
-// 5. USAGE EXAMPLE - Replace existing monolithic code
-// ===================================================================
-
-/*
-// OLD MONOLITHIC APPROACH (to be removed from App.jsx):
-const renderPackageSelection = () => {
-  return (
-    <div style={{ padding: '20px' }}>
-      {packages.map(pkg => (
-        <div key={pkg.id} style={{ marginBottom: '20px', border: '1px solid #ccc' }}>
-          <h3>{pkg.name}</h3>
-          <p>{pkg.description}</p>
-          // ... hundreds of lines of inline JSX
-        </div>
-      ))}
-    </div>
-  );
-};
-
-// NEW COMPONENT-BASED APPROACH:
-*/
-
-const ModernPackageSelection = () => (
-  <AppProvider>
-    <div className="modern-sap-configurator">
-      <PackageSelectionSection />
-    </div>
-  </AppProvider>
-);
-
-// ===================================================================
-// 6. TYPE EXTENSIONS FOR NEW COMPONENTS
-// ===================================================================
-
-// Add these to your existing types/schemas.ts file
-
-export interface PackageSelectionState {
-  searchTerm: string;
-  selectedCategories: string[];
-  showMalaysiaOnly: boolean;
-  showCriticalPath: boolean;
-  sortBy: 'name' | 'effort' | 'category' | 'price';
-  sortOrder: 'asc' | 'desc';
-}
-
-export interface ComponentAnimationProps {
-  duration?: number;
-  delay?: number;
-  easing?: string;
-}
-
-export interface PackageCardTheme {
-  selectedBorderColor: string;
-  partialBorderColor: string;
-  hoverShadow: string;
-  iconBackground: string;
-}
-
-// ===================================================================
-// 7. MIGRATION GUIDE COMMENTS
-// ===================================================================
-
-/*
-MIGRATION FROM MONOLITHIC App.jsx TO COMPONENT-BASED ARCHITECTURE:
-
-1. IMMEDIATE STEPS:
-   - Copy the new components to src/components/
-   - Update AppProvider.tsx with enhanced context
-   - Replace package selection JSX in App.jsx with <PackageSelectionSection />
-   - Test functionality to ensure no regressions
-
-2. PERFORMANCE BENEFITS:
-   - React.memo prevents unnecessary re-renders
-   - Optimized filtering with useCallback
-   - Efficient state management with context
-   - Smooth animations with CSS-in-JS
-
-3. UX IMPROVEMENTS:
-   - Steve Jobs-level attention to detail
-   - Smooth micro-interactions
-   - Intuitive filtering and search
-   - Beautiful visual hierarchy
-   - Accessible design patterns
-
-4. MAINTAINABILITY GAINS:
-   - Single responsibility components
-   - Clear separation of concerns
-   - Easy to test individual components
-   - Reusable component architecture
-   - Type-safe props and state
-
-5. NEXT STEPS (Phase 4c):
-   - Extract Timeline components
-   - Extract Resource Management components  
-   - Extract Integration components
-   - Create unified design system
-   - Add comprehensive testing
-
-VERIFICATION CHECKLIST:
-✅ Package selection works (toggle packages)
-✅ Module selection works (individual modules)  
-✅ Search and filtering functional
-✅ Statistics display correctly
-✅ Animations smooth and performant
-✅ No console errors
-✅ TypeScript types correct
-✅ Accessibility features working
-*/
+export { useApp };
+export type { SAPPackage, SAPModule, Integration, MalaysiaForm, ProjectService, ClientProfile };

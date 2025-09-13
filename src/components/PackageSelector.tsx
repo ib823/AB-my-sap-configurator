@@ -1,557 +1,143 @@
 import React, { useState, useMemo } from 'react';
-import { useApp } from './AppProvider';
-import { ChevronDown, ChevronRight, Package, Search, Filter, AlertTriangle, Check, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Minus, Search, Filter, AlertTriangle, CheckCircle } from 'lucide-react';
+import { useApp, SAPPackage, SAPModule } from './AppProvider';
 
-// ======================== TYPES ========================
-interface PackageSelectorProps {
-  className?: string;
-  onSelectionChange?: (selectedCount: number) => void;
-}
+// ======================== PACKAGE SELECTOR COMPONENTS ========================
 
-interface PackageCardProps {
-  package: any;
-  onPackageToggle: (packageId: string) => void;
-  onModuleToggle: (packageId: string, moduleId: string) => void;
-  onExpandToggle: (packageId: string) => void;
-  validatePrerequisites: (packageId: string, moduleId?: string) => { valid: boolean; missing: string[] };
-}
-
-// ======================== SUB-COMPONENTS ========================
-
-/**
- * 1. PackageSearchFilter - Search and category filtering
- */
-const PackageSearchFilter: React.FC<{
+const PackageSearchAndFilter: React.FC<{
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   selectedCategory: string;
   setSelectedCategory: (category: string) => void;
   categories: string[];
-  packageCount: number;
-}> = ({
-  searchQuery,
-  setSearchQuery,
-  selectedCategory,
-  setSelectedCategory,
-  categories,
-  packageCount
-}) => {
+}> = ({ searchQuery, setSearchQuery, selectedCategory, setSelectedCategory, categories }) => {
   return (
-    <div className="package-search-filter">
-      <div style={{ 
-        display: 'flex', 
-        gap: '16px', 
-        marginBottom: '24px',
-        alignItems: 'center',
-        flexWrap: 'wrap'
-      }}>
-        {/* Search Input */}
-        <div style={{ position: 'relative', flex: '1', minWidth: '300px' }}>
-          <Search 
-            size={20} 
-            style={{
-              position: 'absolute',
-              left: '12px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: '#8e8e93'
-            }}
-          />
-          <input
-            type="text"
-            placeholder="Search packages..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '12px 16px 12px 44px',
-              border: '2px solid #e5e5e7',
-              borderRadius: '12px',
-              fontSize: '16px',
-              background: 'white',
-              transition: 'border-color 0.2s ease',
-              outline: 'none'
-            }}
-            onFocus={(e) => e.target.style.borderColor = '#007AFF'}
-            onBlur={(e) => e.target.style.borderColor = '#e5e5e7'}
-          />
-        </div>
+    <div className="space-y-4 mb-6">
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+        <input
+          type="text"
+          placeholder="Search packages and modules..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm"
+        />
+      </div>
 
-        {/* Category Filter */}
-        <div style={{ position: 'relative', minWidth: '200px' }}>
-          <Filter 
-            size={16} 
-            style={{
-              position: 'absolute',
-              left: '12px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: '#8e8e93'
-            }}
-          />
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '12px 16px 12px 36px',
-              border: '2px solid #e5e5e7',
-              borderRadius: '12px',
-              fontSize: '16px',
-              background: 'white',
-              cursor: 'pointer',
-              outline: 'none'
-            }}
-          >
-            <option value="all">All Categories</option>
-            {categories.filter(cat => cat !== 'all').map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Package Count */}
-        <div style={{
-          padding: '12px 16px',
-          background: 'rgba(0,122,255,0.1)',
-          borderRadius: '12px',
-          fontSize: '14px',
-          fontWeight: '600',
-          color: '#007AFF'
-        }}>
-          {packageCount} packages
-        </div>
+      {/* Category Filter */}
+      <div className="relative">
+        <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+        <select
+          value={selectedCategory}
+          onChange={(e) => setSelectedCategory(e.target.value)}
+          className="w-full pl-10 pr-8 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm appearance-none"
+        >
+          {categories.map(cat => (
+            <option key={cat} value={cat}>
+              {cat === 'all' ? 'All Categories' : cat}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
       </div>
     </div>
   );
 };
 
-/**
- * 2. PackageCard - Individual package card with modules
- */
-const PackageCard: React.FC<PackageCardProps> = ({
-  package: pkg,
-  onPackageToggle,
-  onModuleToggle,
-  onExpandToggle,
-  validatePrerequisites
-}) => {
-  const selectedModules = pkg.modules.filter((m: any) => m.selected);
-  const hasPartialSelection = selectedModules.length > 0 && selectedModules.length < pkg.modules.length;
-  const validation = validatePrerequisites(pkg.id);
+const ModuleRow: React.FC<{
+  module: SAPModule;
+  packageId: string;
+  isPackageSelected: boolean;
+  onToggleModule: (moduleId: string) => void;
+  validation: { valid: boolean; missing: string[] };
+}> = ({ module, packageId, isPackageSelected, onToggleModule, validation }) => {
+  const isDisabled = isPackageSelected;
+  const hasValidationError = !validation.valid && !module.selected;
 
   return (
     <div
-      className="package-card"
-      style={{
-        border: `2px solid ${!validation.valid ? '#ff3b30' : pkg.selected ? '#007AFF' : hasPartialSelection ? '#ff9500' : '#e5e5e7'}`,
-        borderRadius: '16px',
-        background: pkg.selected ? 'linear-gradient(135deg, #f0f4ff 0%, #e6f2ff 100%)' : 'white',
-        overflow: 'hidden',
-        transition: 'all 0.3s ease',
-        boxShadow: pkg.selected ? '0 8px 25px rgba(0,122,255,0.15)' : '0 2px 8px rgba(0,0,0,0.05)'
-      }}
+      className={`flex items-center justify-between p-4 rounded-lg border transition-all ${
+        module.selected 
+          ? 'border-blue-200 bg-blue-50/50' 
+          : hasValidationError
+          ? 'border-red-200 bg-red-50/30'
+          : 'border-slate-200 bg-white hover:bg-slate-50/50'
+      } ${isDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}
     >
-      {/* Package Header */}
-      <div
-        onClick={() => onPackageToggle(pkg.id)}
-        style={{
-          padding: '20px',
-          cursor: validation.valid || pkg.selected ? 'pointer' : 'not-allowed',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          opacity: validation.valid || pkg.selected ? 1 : 0.6
-        }}
-      >
-        <div style={{ flex: 1 }}>
-          {/* Title Row */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <span style={{ fontSize: '24px' }}>{pkg.icon || '📦'}</span>
-            <h3 style={{ fontSize: '18px', fontWeight: '700', margin: 0, color: '#1d1d1f' }}>
-              {pkg.name}
-            </h3>
-            
-            {/* Badges */}
-            {pkg.malaysia_verified && (
-              <span style={{
-                padding: '4px 8px',
-                background: '#34c759',
-                color: 'white',
-                borderRadius: '6px',
-                fontSize: '12px',
-                fontWeight: '600'
-              }}>
-                MY ✓
-              </span>
-            )}
-            
-            {pkg.critical_path && (
-              <span style={{
-                padding: '4px 8px',
-                background: '#ff9500',
-                color: 'white',
-                borderRadius: '6px',
-                fontSize: '12px',
-                fontWeight: '600'
-              }}>
-                Critical
-              </span>
-            )}
-          </div>
-
-          {/* Category Badge */}
-          <div style={{
-            display: 'inline-block',
-            padding: '4px 12px',
-            background: 'rgba(0,122,255,0.1)',
-            color: '#007AFF',
-            borderRadius: '8px',
-            fontSize: '12px',
-            fontWeight: '600',
-            marginBottom: '12px'
-          }}>
-            {pkg.category}
-          </div>
-
-          {/* Description */}
-          <p style={{ fontSize: '14px', color: '#6e6e73', margin: '0 0 16px 0', lineHeight: '1.4' }}>
-            {pkg.description}
-          </p>
-
-          {/* Metrics */}
-          <div style={{ display: 'flex', gap: '16px', fontSize: '13px', color: '#8e8e93', flexWrap: 'wrap' }}>
-            <span><strong>{pkg.total_effort_pd || 0}</strong> person-days</span>
-            <span><strong>{pkg.modules?.length || 0}</strong> modules</span>
-            {pkg.prerequisites?.length > 0 && (
-              <span>Requires: {pkg.prerequisites.join(', ')}</span>
-            )}
-          </div>
-
-          {/* Prerequisites Warning */}
-          {!validation.valid && (
-            <div style={{
-              marginTop: '12px',
-              padding: '8px 12px',
-              background: 'rgba(255,59,48,0.1)',
-              border: '1px solid rgba(255,59,48,0.3)',
-              borderRadius: '8px',
-              fontSize: '12px',
-              color: '#ff3b30',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
-              <AlertTriangle size={16} />
-              Missing prerequisites: {validation.missing.join(', ')}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <h5 className="font-medium text-slate-900 text-sm">{module.name}</h5>
+          {module.malaysia_verified && (
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+              MY
+            </span>
+          )}
+          {module.critical_path && (
+            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+              Critical
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-slate-600 mb-2">{module.description}</p>
+        <div className="flex items-center gap-3 text-xs text-slate-500">
+          <span>{module.effort_pd} PD</span>
+          {hasValidationError && (
+            <div className="flex items-center gap-1 text-red-600">
+              <AlertTriangle className="w-3 h-3" />
+              <span>Missing prerequisites</span>
             </div>
           )}
         </div>
-
-        {/* Right Side Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* Selection Indicator */}
-          <div style={{
-            width: '28px',
-            height: '28px',
-            borderRadius: '50%',
-            background: pkg.selected ? '#007AFF' : hasPartialSelection ? '#ff9500' : '#e5e5e7',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white',
-            fontSize: '14px',
-            fontWeight: '700'
-          }}>
-            {pkg.selected ? <Check size={16} /> : hasPartialSelection ? selectedModules.length : ''}
-          </div>
-
-          {/* Expand Button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onExpandToggle(pkg.id);
-            }}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '8px',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#007AFF'
-            }}
-          >
-            {pkg.expanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-          </button>
-        </div>
       </div>
 
-      {/* Module Selection */}
-      {pkg.expanded && (
-        <div style={{
-          borderTop: '1px solid #e5e5e7',
-          padding: '20px',
-          background: 'rgba(0,0,0,0.02)'
-        }}>
-          <h4 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '16px', color: '#1d1d1f' }}>
-            Individual Modules ({pkg.modules?.length || 0}):
-          </h4>
-          
-          <div style={{ display: 'grid', gap: '12px' }}>
-            {(pkg.modules || []).map((module: any) => {
-              const isModuleSelected = module.selected;
-              const isDisabled = pkg.selected; // If package is selected, modules are auto-selected
-              
-              return (
-                <div
-                  key={module.id}
-                  onClick={() => !isDisabled && onModuleToggle(pkg.id, module.id)}
-                  style={{
-                    padding: '16px',
-                    border: `1px solid ${isModuleSelected ? '#007AFF' : '#e5e5e7'}`,
-                    borderRadius: '12px',
-                    background: isModuleSelected ? 'rgba(0,122,255,0.05)' : 'white',
-                    cursor: isDisabled ? 'not-allowed' : 'pointer',
-                    opacity: isDisabled ? 0.5 : 1,
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1 }}>
-                      <h5 style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 4px 0', color: '#1d1d1f' }}>
-                        {module.name}
-                      </h5>
-                      <p style={{ fontSize: '12px', color: '#6e6e73', margin: '0 0 8px 0' }}>
-                        {module.description}
-                      </p>
-                      <div style={{ fontSize: '11px', color: '#8e8e93' }}>
-                        <span><strong>{module.effort_pd || 0}</strong> person-days</span>
-                        {module.prerequisites?.length > 0 && (
-                          <span style={{ marginLeft: '12px' }}>
-                            Requires: {module.prerequisites.join(', ')}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div style={{
-                      width: '20px',
-                      height: '20px',
-                      borderRadius: '50%',
-                      background: isModuleSelected ? '#007AFF' : '#e5e5e7',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginLeft: '12px'
-                    }}>
-                      {isModuleSelected && <Check size={12} color="white" />}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <button
+        onClick={() => onToggleModule(module.id)}
+        disabled={isDisabled}
+        className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
+          isDisabled
+            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+            : module.selected
+            ? 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+            : hasValidationError
+            ? 'bg-red-100 text-red-600 hover:bg-red-200'
+            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+        }`}
+      >
+        {module.selected ? <Minus className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+      </button>
     </div>
   );
 };
 
-/**
- * 3. PackageGrid - Grid layout for package cards
- */
-const PackageGrid: React.FC<{
-  packages: any[];
-  onPackageToggle: (packageId: string) => void;
-  onModuleToggle: (packageId: string, moduleId: string) => void;
-  onExpandToggle: (packageId: string) => void;
-  validatePrerequisites: (packageId: string, moduleId?: string) => { valid: boolean; missing: string[] };
-}> = ({
-  packages,
-  onPackageToggle,
-  onModuleToggle,
-  onExpandToggle,
-  validatePrerequisites
-}) => {
-  if (packages.length === 0) {
-    return (
-      <div style={{
-        textAlign: 'center',
-        padding: '60px 20px',
-        color: '#8e8e93'
-      }}>
-        <Package size={48} style={{ margin: '0 auto 16px', opacity: 0.5 }} />
-        <h3 style={{ fontSize: '18px', fontWeight: '600', margin: '0 0 8px 0' }}>
-          No packages found
-        </h3>
-        <p style={{ fontSize: '14px', margin: 0 }}>
-          Try adjusting your search or filter criteria
-        </p>
-      </div>
-    );
-  }
+const PackageCard: React.FC<{ package: SAPPackage }> = ({ package: pkg }) => {
+  const { updatePackage, validatePrerequisites } = useApp();
 
-  return (
-    <div style={{ display: 'grid', gap: '20px' }}>
-      {packages.map(pkg => (
-        <PackageCard
-          key={pkg.id}
-          package={pkg}
-          onPackageToggle={onPackageToggle}
-          onModuleToggle={onModuleToggle}
-          onExpandToggle={onExpandToggle}
-          validatePrerequisites={validatePrerequisites}
-        />
-      ))}
-    </div>
-  );
-};
+  const selectedModules = pkg.modules.filter(m => m.selected).length;
+  const hasPartialSelection = selectedModules > 0 && selectedModules < pkg.modules.length;
+  const packageValidation = validatePrerequisites(pkg.id);
 
-/**
- * 4. PackageStats - Selection statistics and summary
- */
-const PackageStats: React.FC<{
-  totalPackages: number;
-  selectedPackages: number;
-  totalEffort: number;
-}> = ({
-  totalPackages,
-  selectedPackages,
-  totalEffort
-}) => {
-  const selectionRate = totalPackages > 0 ? (selectedPackages / totalPackages) * 100 : 0;
+  const handleToggleExpand = () => {
+    updatePackage(pkg.id, { expanded: !pkg.expanded });
+  };
 
-  return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-      gap: '16px',
-      marginBottom: '24px'
-    }}>
-      {/* Selected Packages */}
-      <div style={{
-        padding: '20px',
-        background: 'linear-gradient(135deg, #007AFF 0%, #5856D6 100%)',
-        borderRadius: '16px',
-        color: 'white',
-        textAlign: 'center'
-      }}>
-        <div style={{ fontSize: '32px', fontWeight: '800', marginBottom: '4px' }}>
-          {selectedPackages}
-        </div>
-        <div style={{ fontSize: '14px', opacity: 0.9 }}>
-          Selected Packages
-        </div>
-      </div>
-
-      {/* Total Effort */}
-      <div style={{
-        padding: '20px',
-        background: 'linear-gradient(135deg, #34C759 0%, #30B22A 100%)',
-        borderRadius: '16px',
-        color: 'white',
-        textAlign: 'center'
-      }}>
-        <div style={{ fontSize: '32px', fontWeight: '800', marginBottom: '4px' }}>
-          {Math.round(totalEffort)}
-        </div>
-        <div style={{ fontSize: '14px', opacity: 0.9 }}>
-          Person-Days
-        </div>
-      </div>
-
-      {/* Selection Rate */}
-      <div style={{
-        padding: '20px',
-        background: 'linear-gradient(135deg, #FF9500 0%, #FF6B00 100%)',
-        borderRadius: '16px',
-        color: 'white',
-        textAlign: 'center'
-      }}>
-        <div style={{ fontSize: '32px', fontWeight: '800', marginBottom: '4px' }}>
-          {Math.round(selectionRate)}%
-        </div>
-        <div style={{ fontSize: '14px', opacity: 0.9 }}>
-          Coverage
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/**
- * 5. MAIN PackageSelector Component
- */
-const PackageSelector: React.FC<PackageSelectorProps> = ({
-  className = '',
-  onSelectionChange
-}) => {
-  const {
-    state,
-    updatePackage,
-    validatePrerequisites,
-    calculateTotalEffort
-  } = useApp();
-
-  // Local state for search and filtering
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-
-  // Get unique categories
-  const categories = useMemo(() => {
-    const cats = Array.from(new Set(state.packages.map(p => p.category)));
-    return ['all', ...cats.sort()];
-  }, [state.packages]);
-
-  // Filter packages
-  const filteredPackages = useMemo(() => {
-    return state.packages.filter(pkg => {
-      const matchesSearch = pkg.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           pkg.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           pkg.category.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory = selectedCategory === 'all' || pkg.category === selectedCategory;
-      return matchesSearch && matchesCategory;
-    });
-  }, [state.packages, searchQuery, selectedCategory]);
-
-  // Package selection stats
-  const selectedPackages = useMemo(() => {
-    return state.packages.filter(p => p.selected || p.modules.some(m => m.selected));
-  }, [state.packages]);
-
-  const totalEffort = calculateTotalEffort();
-
-  // Event handlers
-  const handlePackageToggle = (packageId: string) => {
-    const pkg = state.packages.find(p => p.id === packageId);
-    if (!pkg) return;
-
-    const validation = validatePrerequisites(packageId);
-    if (!validation.valid && !pkg.selected) {
-      alert(`Missing prerequisites: ${validation.missing.join(', ')}`);
+  const handleTogglePackage = () => {
+    if (!packageValidation.valid && !pkg.selected) {
+      alert(`Missing prerequisites: ${packageValidation.missing.join(', ')}`);
       return;
     }
 
     const newSelected = !pkg.selected;
-    updatePackage(packageId, { 
-      selected: newSelected,
-      // If package is selected, clear individual module selections
-      modules: newSelected ? pkg.modules.map(m => ({ ...m, selected: false })) : pkg.modules
-    });
-
-    onSelectionChange?.(newSelected ? selectedPackages.length + 1 : selectedPackages.length - 1);
+    const updatedModules = pkg.modules.map(m => ({ ...m, selected: false }));
+    updatePackage(pkg.id, { selected: newSelected, modules: updatedModules });
   };
 
-  const handleModuleToggle = (packageId: string, moduleId: string) => {
-    const pkg = state.packages.find(p => p.id === packageId);
-    if (!pkg || pkg.selected) return; // Can't select individual modules if package is selected
+  const handleToggleModule = (moduleId: string) => {
+    if (pkg.selected) return;
 
-    const moduleValidation = validatePrerequisites(packageId, moduleId);
+    const moduleValidation = validatePrerequisites(pkg.id, moduleId);
     const module = pkg.modules.find(m => m.id === moduleId);
-    
+
     if (!moduleValidation.valid && module && !module.selected) {
       alert(`Missing module prerequisites: ${moduleValidation.missing.join(', ')}`);
       return;
@@ -560,55 +146,229 @@ const PackageSelector: React.FC<PackageSelectorProps> = ({
     const updatedModules = pkg.modules.map(m => 
       m.id === moduleId ? { ...m, selected: !m.selected } : m
     );
-    
-    updatePackage(packageId, { modules: updatedModules });
-    onSelectionChange?.(selectedPackages.length);
-  };
-
-  const handleExpandToggle = (packageId: string) => {
-    const pkg = state.packages.find(p => p.id === packageId);
-    if (!pkg) return;
-
-    updatePackage(packageId, { expanded: !pkg.expanded });
+    updatePackage(pkg.id, { modules: updatedModules });
   };
 
   return (
-    <div className={`package-selector ${className}`}>
-      {/* Statistics */}
-      <PackageStats
-        totalPackages={state.packages.length}
-        selectedPackages={selectedPackages.length}
-        totalEffort={totalEffort}
-      />
+    <div className="border border-slate-200 rounded-xl bg-white shadow-sm hover:shadow-md transition-all overflow-hidden">
+      {/* Package Header */}
+      <div className="p-6">
+        <div className="flex items-start gap-4">
+          <div className="text-3xl flex-shrink-0">{pkg.icon}</div>
+          
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="font-semibold text-slate-900 text-lg truncate">{pkg.name}</h3>
+              {pkg.malaysia_verified && (
+                <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+                  MY
+                </span>
+              )}
+              {pkg.critical_path && (
+                <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full font-medium">
+                  Critical
+                </span>
+              )}
+            </div>
+            
+            <p className="text-sm text-slate-600 mb-3 leading-relaxed">{pkg.description}</p>
+            
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4 text-sm text-slate-700">
+                <span className="font-medium">{pkg.total_effort_pd} PD</span>
+                <span className="text-slate-500">•</span>
+                <span className="text-slate-500">{pkg.modules.length} modules</span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleTogglePackage}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    pkg.selected 
+                      ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' 
+                      : hasPartialSelection 
+                      ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                      : !packageValidation.valid
+                      ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  {pkg.selected ? (
+                    <div className="flex items-center gap-1">
+                      <CheckCircle className="w-4 h-4" />
+                      Full Package
+                    </div>
+                  ) : hasPartialSelection ? (
+                    `Partial (${selectedModules})`
+                  ) : !packageValidation.valid ? (
+                    <div className="flex items-center gap-1">
+                      <AlertTriangle className="w-4 h-4" />
+                      Prerequisites
+                    </div>
+                  ) : (
+                    'Add Package'
+                  )}
+                </button>
+
+                <button
+                  onClick={handleToggleExpand}
+                  className="p-2 text-slate-400 hover:text-slate-600 transition-colors rounded-lg hover:bg-slate-100"
+                >
+                  {pkg.expanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Module List */}
+      {pkg.expanded && (
+        <div className="border-t border-slate-200 bg-slate-50/50">
+          <div className="p-6 space-y-3">
+            <h4 className="text-sm font-semibold text-slate-700 mb-4">Individual Modules</h4>
+            <div className="space-y-3">
+              {pkg.modules.map(module => {
+                const moduleValidation = validatePrerequisites(pkg.id, module.id);
+                return (
+                  <ModuleRow
+                    key={module.id}
+                    module={module}
+                    packageId={pkg.id}
+                    isPackageSelected={pkg.selected}
+                    onToggleModule={handleToggleModule}
+                    validation={moduleValidation}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SelectionSummary: React.FC = () => {
+  const { state, calculateTotalEffort, getSelectedPackages } = useApp();
+  
+  const selectedPackages = getSelectedPackages();
+  const totalEffort = calculateTotalEffort();
+  const selectedModulesCount = state.packages.reduce((sum, pkg) => 
+    sum + pkg.modules.filter(m => m.selected).length, 0
+  );
+
+  if (selectedPackages.length === 0 && selectedModulesCount === 0) {
+    return null;
+  }
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-6">
+      <h3 className="text-lg font-semibold text-blue-900 mb-4">Selection Summary</h3>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-blue-900">{selectedPackages.length}</div>
+          <div className="text-sm text-blue-700">Packages</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-blue-900">{selectedModulesCount}</div>
+          <div className="text-sm text-blue-700">Modules</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-blue-900">{totalEffort}</div>
+          <div className="text-sm text-blue-700">Total PD</div>
+        </div>
+        <div className="text-center">
+          <button
+            onClick={() => {
+              // Dispatch custom event for export
+              window.dispatchEvent(new CustomEvent('sapScopeExport', {
+                detail: { packages: selectedPackages, totalEffort }
+              }));
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+          >
+            Export to Timeline
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ======================== MAIN PACKAGE SELECTOR COMPONENT ========================
+
+const PackageSelector: React.FC = () => {
+  const { state } = useApp();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+
+  // Generate categories from available packages
+  const categories = useMemo(() => {
+    const cats = ['all', ...Array.from(new Set(state.packages.map(p => p.category)))];
+    return cats.sort();
+  }, [state.packages]);
+
+  // Filter packages based on search and category
+  const filteredPackages = useMemo(() => {
+    return state.packages.filter(pkg => {
+      const matchesSearch = searchQuery === '' || 
+        pkg.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pkg.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pkg.modules.some(m => 
+          m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          m.description.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+
+      const matchesCategory = selectedCategory === 'all' || pkg.category === selectedCategory;
+
+      return matchesSearch && matchesCategory;
+    });
+  }, [state.packages, searchQuery, selectedCategory]);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="text-center mb-8">
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">SAP Package Selection</h2>
+        <p className="text-slate-600 max-w-2xl mx-auto">
+          Choose the SAP packages and modules that best fit your business requirements. 
+          Use search and filters to find exactly what you need.
+        </p>
+      </div>
+
+      {/* Selection Summary */}
+      <SelectionSummary />
 
       {/* Search and Filter */}
-      <PackageSearchFilter
+      <PackageSearchAndFilter
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         selectedCategory={selectedCategory}
         setSelectedCategory={setSelectedCategory}
         categories={categories}
-        packageCount={filteredPackages.length}
       />
 
-      {/* Package Grid */}
-      <PackageGrid
-        packages={filteredPackages}
-        onPackageToggle={handlePackageToggle}
-        onModuleToggle={handleModuleToggle}
-        onExpandToggle={handleExpandToggle}
-        validatePrerequisites={validatePrerequisites}
-      />
+      {/* Package List */}
+      <div className="space-y-4">
+        {filteredPackages.map(pkg => (
+          <PackageCard key={pkg.id} package={pkg} />
+        ))}
+
+        {filteredPackages.length === 0 && (
+          <div className="text-center py-12">
+            <div className="text-slate-400 mb-4">
+              <Search className="w-12 h-12 mx-auto" />
+            </div>
+            <h3 className="text-lg font-medium text-slate-900 mb-2">No packages found</h3>
+            <p className="text-slate-600">
+              Try adjusting your search terms or category filter to find the packages you're looking for.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
-};
-
-// Also export sub-components for potential individual use
-export {
-  PackageSearchFilter,
-  PackageCard,
-  PackageGrid,
-  PackageStats
 };
 
 export default PackageSelector;
