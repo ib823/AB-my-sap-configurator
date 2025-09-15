@@ -369,7 +369,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logChange = useCallback((change: Omit<PackageChange, "id" | "timestamp">) => {
     const newChange: PackageChange = {
       ...change,
-      id: \`chg_\${Date.now()}_\${Math.random().toString(36).slice(2, 8)}\`,
+      id: `chg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       timestamp: new Date(),
     };
     setState((prev) => ({
@@ -399,7 +399,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addIntegration = useCallback((integration: Omit<Integration, "id">) => {
     const newIntegration: Integration = {
       ...integration,
-      id: \`int_\${Date.now()}_\${Math.random().toString(36).slice(2, 8)}\`,
+      id: `int_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     };
     setState((prev) => ({
       ...prev,

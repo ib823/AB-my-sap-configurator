@@ -1,3 +1,7 @@
+#!/bin/bash
+
+echo "📝 Creating SAPScopeApp.tsx..."
+cat > src/components/SAPScopeApp.tsx << 'SCOPEAPP_EOF'
 import React, { useState, useMemo } from 'react';
 import { useApp } from './AppProvider';
 import { ChevronDown, ChevronRight, Plus, Minus, AlertTriangle, Search, Filter, Package, FileText, DollarSign, AlertCircle } from 'lucide-react';
@@ -431,3 +435,10 @@ const SAPScopeApp: React.FC = () => {
 };
 
 export default SAPScopeApp;
+SCOPEAPP_EOF
+
+echo "✅ SAPScopeApp.tsx created!"
+echo "✅ All files created successfully!"
+echo ""
+echo "🎉 Fix applied! Now restart your server:"
+echo "   npm run dev"
