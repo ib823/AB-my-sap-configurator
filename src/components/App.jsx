@@ -300,6 +300,10 @@ export default function ProjectTimeline() {
       background: rgba(0, 0, 0, 0.2);
     }
 
+    .phase-drag-handle.dragging {
+      cursor: grabbing;
+    }
+
     /* Phase Content */
     .phase-content {
       display: flex;
@@ -560,6 +564,39 @@ export default function ProjectTimeline() {
       pointer-events: auto;
     }
 
+    /* Date Input Styles */
+    .date-input-group {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: end;
+    }
+
+    .date-input-field {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      background: var(--surface);
+    }
+
+    .today-button {
+      padding: 10px 16px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .today-button:hover {
+      opacity: 0.9;
+    }
+
     /* Notifications */
     @keyframes slideInRight {
       from {
@@ -630,7 +667,7 @@ export default function ProjectTimeline() {
   const [draggedPhase, setDraggedPhase] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const dragRef = useRef(null);
+  const [ghostPosition, setGhostPosition] = useState({ x: 0, y: 0 });
 
   /* ==========================
      UTILITY FUNCTIONS
@@ -678,13 +715,14 @@ export default function ProjectTimeline() {
   };
 
   const dateToBusinessDay = (date, holidayList = holidays, skipHolidays = true, baseDate = BUSINESS_DAY_BASE_DATE) => {
-    if (date < baseDate) return 0;
+    const targetDate = typeof date === 'string' ? new Date(date) : new Date(date);
+    if (targetDate < baseDate) return 0;
     
     if (skipHolidays) {
-      return businessDaysBetween(baseDate, date, holidayList);
+      return businessDaysBetween(baseDate, targetDate, holidayList);
     } else {
       const msPerDay = 1000 * 60 * 60 * 24;
-      return Math.floor((date - baseDate) / msPerDay);
+      return Math.floor((targetDate - baseDate) / msPerDay);
     }
   };
 
@@ -726,6 +764,18 @@ export default function ProjectTimeline() {
     });
   };
 
+  const parseDateInput = (dateStr) => {
+    // Handle DD/MM/YYYY format
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      const day = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+      const year = parseInt(parts[2], 10);
+      return new Date(year, month, day);
+    }
+    return new Date(dateStr);
+  };
+
   const getCategoryColor = (category) => {
     const colors = {
       'Project Management': '#007AFF',
@@ -752,14 +802,14 @@ export default function ProjectTimeline() {
       { name: 'quarterly', unit: 60, minWidth: 160, label: 'Quarterly' }
     ];
     
-    // Special case: if timeline exceeds 10 years, allow scrolling
+    // Special case: if timeline exceeds 10 years (2600 business days), allow scrolling
     if (totalBusinessDays > 2600) {
       const level = levels[4]; // quarterly
       document.documentElement.style.setProperty('--unit-width', `${level.minWidth}px`);
       return level;
     }
     
-    // Find the best fit level
+    // Find the best fit level that doesn't require scrolling
     for (let i = 0; i < levels.length; i++) {
       const level = levels[i];
       const unitsNeeded = Math.ceil(totalBusinessDays / level.unit);
@@ -921,6 +971,7 @@ export default function ProjectTimeline() {
     }
     
     setTimeout(() => autoFitTimeline(), 50);
+    addNotification("Phase updated", "success");
   };
 
   const deletePhase = (id) => {
@@ -928,6 +979,21 @@ export default function ProjectTimeline() {
     if (selectedPhase?.id === id) {
       closePhaseDetail();
     }
+  };
+
+  const duplicatePhase = (id) => {
+    const src = phases.find(p => p.id === id);
+    if (!src) return;
+    
+    const dup = {
+      ...src,
+      id: Date.now() + Math.random(),
+      name: src.name + " (Copy)",
+      startBusinessDay: src.startBusinessDay + src.workingDays
+    };
+    
+    setPhases(prev => [...prev, dup]);
+    addNotification("Phase duplicated", "success");
   };
 
   /* ==========================
@@ -940,6 +1006,9 @@ export default function ProjectTimeline() {
     // Calculate offset from mouse to phase start
     const phaseElement = e.currentTarget;
     const rect = phaseElement.getBoundingClientRect();
+    const timelineBody = document.querySelector('.timeline-body');
+    const timelineRect = timelineBody.getBoundingClientRect();
+    
     setDragOffset({
       x: e.clientX - rect.left,
       y: e.clientY - rect.top
@@ -955,6 +1024,18 @@ export default function ProjectTimeline() {
   const handleDragOver = (e) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    
+    if (isDragging && draggedPhase) {
+      const timelineBody = document.querySelector('.timeline-body');
+      const rect = timelineBody.getBoundingClientRect();
+      const scrollLeft = timelineBody.scrollLeft;
+      
+      // Update ghost position
+      setGhostPosition({
+        x: e.clientX - rect.left + scrollLeft - 24 - dragOffset.x,
+        y: e.clientY - rect.top - dragOffset.y
+      });
+    }
   };
 
   const handleDrop = (e) => {
@@ -969,7 +1050,10 @@ export default function ProjectTimeline() {
     const x = e.clientX - rect.left + scrollLeft - 24; // Adjust for padding
     
     const unitWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--unit-width'));
-    const newBusinessDay = Math.max(0, Math.round(x / unitWidth));
+    const zoomLevel = memoizedTimelineData.zoomLevel || { unit: 1 };
+    const startOffset = memoizedTimelineData.startOffset || 0;
+    
+    const newBusinessDay = Math.max(0, Math.round((x / unitWidth) * zoomLevel.unit) + startOffset);
     
     // Update phase position
     updatePhase(draggedPhase.id, { startBusinessDay: newBusinessDay });
@@ -977,6 +1061,7 @@ export default function ProjectTimeline() {
     // Reset drag state
     setDraggedPhase(null);
     setIsDragging(false);
+    setGhostPosition({ x: 0, y: 0 });
     
     addNotification(`Moved ${draggedPhase.name} to day ${newBusinessDay}`, 'success');
   };
@@ -984,6 +1069,7 @@ export default function ProjectTimeline() {
   const handleDragEnd = () => {
     setDraggedPhase(null);
     setIsDragging(false);
+    setGhostPosition({ x: 0, y: 0 });
   };
 
   /* ==========================
@@ -1117,7 +1203,7 @@ export default function ProjectTimeline() {
       const totalBusinessDays = 30;
       const businessDays = generateZoomedBusinessDays(BUSINESS_DAY_BASE_DATE, totalBusinessDays, zoomLevel);
       
-      return { businessDays, totalBusinessDays, zoomLevel };
+      return { businessDays, totalBusinessDays, zoomLevel, startOffset: 0 };
     }
     
     const minStart = Math.min(...phases.map(p => p.startBusinessDay));
@@ -1259,76 +1345,91 @@ export default function ProjectTimeline() {
                     </div>
                   </div>
                 ) : (
-                  phases.map((phase) => (
-                    <div
-                      key={phase.id}
-                      className={`phase-bar ${isDragging && draggedPhase?.id === phase.id ? 'dragging' : ''}`}
-                      style={getPhasePosition(phase)}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, phase)}
-                      onDragEnd={handleDragEnd}
-                      onClick={() => openPhaseDetail(phase)}
-                    >
-                      {/* Drag Handle */}
-                      <div className="phase-drag-handle">
-                        <GripVertical size={14} color="rgba(255,255,255,0.8)" />
-                      </div>
-                      
-                      {/* Phase Content */}
-                      <div className="phase-content">
-                        <div className="phase-left">
-                          <div className="phase-info">
-                            <div className="phase-title">{phase.name}</div>
-                            <div className="phase-meta">
-                              <div className="phase-duration">
-                                <Clock size={10} />
-                                {phase.workingDays}d
+                  <>
+                    {phases.map((phase) => (
+                      <div
+                        key={phase.id}
+                        className={`phase-bar ${isDragging && draggedPhase?.id === phase.id ? 'dragging' : ''}`}
+                        style={getPhasePosition(phase)}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, phase)}
+                        onDragEnd={handleDragEnd}
+                        onClick={() => openPhaseDetail(phase)}
+                      >
+                        {/* Drag Handle */}
+                        <div className={`phase-drag-handle ${isDragging && draggedPhase?.id === phase.id ? 'dragging' : ''}`}>
+                          <GripVertical size={14} color="rgba(255,255,255,0.8)" />
+                        </div>
+                        
+                        {/* Phase Content */}
+                        <div className="phase-content">
+                          <div className="phase-left">
+                            <div className="phase-info">
+                              <div className="phase-title">{phase.name}</div>
+                              <div className="phase-meta">
+                                <div className="phase-duration">
+                                  <Clock size={10} />
+                                  {phase.workingDays}d
+                                </div>
                               </div>
                             </div>
                           </div>
+                          
+                          <div className="phase-right">
+                            {/* Resource Avatars */}
+                            {phase.resources && phase.resources.length > 0 && (
+                              <div className="resource-avatars">
+                                {phase.resources.slice(0, 3).map((resource, idx) => (
+                                  <div
+                                    key={resource.id}
+                                    className="resource-avatar"
+                                    style={{
+                                      background: `hsl(${(idx * 137.5) % 360}, 70%, 50%)`
+                                    }}
+                                    title={`${resource.name} (${resource.role})`}
+                                  >
+                                    {resource.name ? resource.name.charAt(0).toUpperCase() : 'R'}
+                                  </div>
+                                ))}
+                                {phase.resources.length > 3 && (
+                                  <div className="resource-count">
+                                    +{phase.resources.length - 3}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                         
-                        <div className="phase-right">
-                          {/* Resource Avatars */}
-                          {phase.resources && phase.resources.length > 0 && (
-                            <div className="resource-avatars">
-                              {phase.resources.slice(0, 3).map((resource, idx) => (
-                                <div
-                                  key={resource.id}
-                                  className="resource-avatar"
-                                  style={{
-                                    background: `hsl(${(idx * 137.5) % 360}, 70%, 50%)`
-                                  }}
-                                  title={`${resource.name} (${resource.role})`}
-                                >
-                                  {resource.name ? resource.name.charAt(0).toUpperCase() : 'R'}
-                                </div>
-                              ))}
-                              {phase.resources.length > 3 && (
-                                <div className="resource-count">
-                                  +{phase.resources.length - 3}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                        {/* Delete Button */}
+                        <button
+                          className="phase-delete-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Delete "${phase.name}"?`)) {
+                              deletePhase(phase.id);
+                            }
+                          }}
+                          title="Delete phase"
+                        >
+                          <X size={12} />
+                        </button>
                       </div>
-                      
-                      {/* Delete Button */}
-                      <button
-                        className="phase-delete-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (window.confirm(`Delete "${phase.name}"?`)) {
-                            deletePhase(phase.id);
-                          }
+                    ))}
+                    
+                    {/* Drag Ghost */}
+                    {isDragging && draggedPhase && (
+                      <div
+                        className="drag-ghost"
+                        style={{
+                          left: `${ghostPosition.x}px`,
+                          top: `${ghostPosition.y}px`,
+                          width: `${Math.max(40, (draggedPhase.workingDays / (memoizedTimelineData.zoomLevel?.unit || 1)) * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--unit-width')) || 80))}px`,
+                          height: '52px'
                         }}
-                        title="Delete phase"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))
+                      />
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -1443,6 +1544,73 @@ export default function ProjectTimeline() {
                   rows={3}
                   style={{ marginBottom: 12, resize: 'vertical' }}
                 />
+              </div>
+
+              {/* Dates Section */}
+              <div className="detail-section">
+                <h3 className="section-title">Schedule</h3>
+                
+                <label className="form-label">Start Date</label>
+                <div className="date-input-group" style={{ marginBottom: 12 }}>
+                  <input
+                    type="text"
+                    className="date-input-field"
+                    placeholder="DD/MM/YYYY"
+                    value={formatDate(businessDayToDate(selectedPhase.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE))}
+                    onChange={(e) => {
+                      const date = parseDateInput(e.target.value);
+                      if (!isNaN(date.getTime())) {
+                        const businessDay = dateToBusinessDay(date, holidays, selectedPhase.skipHolidays, BUSINESS_DAY_BASE_DATE);
+                        updatePhase(selectedPhase.id, { startBusinessDay: Math.max(0, businessDay) });
+                      }
+                    }}
+                  />
+                  <button
+                    className="today-button"
+                    onClick={() => {
+                      const todayBusinessDay = dateToBusinessDay(new Date(), holidays, selectedPhase.skipHolidays, BUSINESS_DAY_BASE_DATE);
+                      updatePhase(selectedPhase.id, { startBusinessDay: todayBusinessDay });
+                    }}
+                  >
+                    Today
+                  </button>
+                </div>
+                
+                <label className="form-label">End Date</label>
+                <div className="date-input-group" style={{ marginBottom: 12 }}>
+                  <input
+                    type="text"
+                    className="date-input-field"
+                    placeholder="DD/MM/YYYY"
+                    value={formatDate(calculateEndDate(
+                      businessDayToDate(selectedPhase.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE),
+                      selectedPhase.workingDays,
+                      holidays,
+                      selectedPhase.skipHolidays
+                    ))}
+                    onChange={(e) => {
+                      const endDate = parseDateInput(e.target.value);
+                      const startDate = businessDayToDate(selectedPhase.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE);
+                      if (!isNaN(endDate.getTime()) && endDate >= startDate) {
+                        const newDuration = businessDaysBetween(startDate, endDate, holidays) + 1;
+                        updatePhase(selectedPhase.id, { workingDays: Math.max(1, newDuration) });
+                      }
+                    }}
+                  />
+                  <button
+                    className="today-button"
+                    onClick={() => {
+                      const startDate = businessDayToDate(selectedPhase.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE);
+                      const today = new Date();
+                      if (today >= startDate) {
+                        const newDuration = businessDaysBetween(startDate, today, holidays) + 1;
+                        updatePhase(selectedPhase.id, { workingDays: Math.max(1, newDuration) });
+                      }
+                    }}
+                  >
+                    Today
+                  </button>
+                </div>
                 
                 <label className="form-checkbox">
                   <input
@@ -1591,6 +1759,42 @@ export default function ProjectTimeline() {
                     ))}</strong>
                   </div>
                 </div>
+              </div>
+              
+              {/* Actions */}
+              <div className="detail-section">
+                <button
+                  className="secondary-action"
+                  onClick={() => duplicatePhase(selectedPhase.id)}
+                  style={{ width: '100%', marginBottom: 8 }}
+                >
+                  <Copy size={14} style={{ marginRight: 4 }} />
+                  Duplicate Phase
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Delete "${selectedPhase.name}"?`)) {
+                      deletePhase(selectedPhase.id);
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    background: '#FF3B30',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <Trash2 size={14} style={{ marginRight: 4 }} />
+                  Delete Phase
+                </button>
               </div>
             </div>
           </div>
