@@ -1,0 +1,966 @@
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { ChevronDown, ChevronRight, Calendar, Users, DollarSign, Download, Eye, EyeOff, Package, AlertCircle, TrendingUp, Clock, Target, Briefcase, X, Plus, Copy, Trash2, GripVertical, CheckCircle, Activity, Link2, Settings, Shield } from "lucide-react";
+import PhaseDetailPanel from "./PhaseDetailPanel";
+
+// Import SAP Scope components
+const SAPScopeApp = React.lazy(() => 
+  import('./SAPScopeApp').catch(() => ({ 
+    default: () => <div style={{ padding: '20px', textAlign: 'center' }}>SAP Scope Module Loading...</div> 
+  }))
+);
+
+export default function ProjectTimeline() {
+  /* =======================
+     DESIGN SYSTEM & GLOBAL CSS
+     ======================= */
+  const styles = `
+    :root {
+      --primary:#007AFF; --success:#34C759; --warning:#FF9500; --danger:#FF3B30;
+      --background:#F2F2F7; --surface:#FFFFFF;
+      --text-primary:#000000; --text-secondary:#8E8E93; --text-tertiary:#C7C7CC;
+      --border:rgba(0,0,0,0.06); --border-strong:rgba(0,0,0,0.12);
+      --shadow-soft:0 1px 3px rgba(0,0,0,0.12); --shadow-medium:0 8px 25px rgba(0,0,0,0.15); --shadow-strong:0 16px 40px rgba(0,0,0,0.25);
+      --radius:12px; --transition:cubic-bezier(0.25,0.46,0.45,0.94); --spring:cubic-bezier(0.175,0.885,0.32,1.275);
+      --unit-width:80px; --transition-zoom: 0.2s ease-out;
+    }
+    * {box-sizing:border-box}
+    body {margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--background);color:var(--text-primary)}
+    .app {max-width:1400px;margin:0 auto;padding:24px;min-height:100vh}
+
+    /* Header */
+    .header {display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:16px;flex-wrap:wrap}
+    .title {font-size:28px;font-weight:800;letter-spacing:-0.3px;margin:0}
+    .header-controls {display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+    .project-status-bar {display:flex;align-items:center;gap:12px;margin-top:6px;flex-wrap:wrap}
+    .status-metric {display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);font-weight:600}
+    .status-metric-value {color:var(--text-primary);font-weight:800}
+    .status-separator {width:1px;height:18px;background:var(--border)}
+
+    .primary-action {
+      background:var(--primary);color:#fff;border:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;
+      transition:all .3s var(--spring);box-shadow:var(--shadow-soft);position:relative;overflow:hidden
+    }
+    .primary-action:hover {transform:translateY(-1px);box-shadow:var(--shadow-medium)}
+    .secondary-action {background:var(--surface);color:var(--text-primary);border:1px solid var(--border);padding:10px 12px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
+    .form-select {background:var(--surface)}
+
+    /* Timeline - ENHANCED FOR NO SCROLLBAR */
+    .timeline-container {background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow-soft);overflow:hidden;position:relative}
+    .timeline-header {border-bottom:1px solid var(--border);background:linear-gradient(180deg,#FFFFFF 0%,#FAFAFA 100%);position:sticky;top:0;z-index:10;backdrop-filter:blur(8px)}
+    .timeline-header-inner {padding:0 24px;overflow:hidden}
+    .timeline-scale {display:flex;width:100%}
+    .scale-unit {flex:1;text-align:center;border-right:1px solid var(--border);position:relative;padding:8px 4px;min-width:40px}
+    .scale-unit.today {background:rgba(0,122,255,0.10)}
+    .scale-unit.holiday {background:rgba(255,149,0,0.10);border-left:3px solid var(--warning)}
+    .date-line-1 {font-size:12px;font-weight:800;color:var(--text-primary);line-height:1.2}
+    .date-line-2 {font-size:11px;color:var(--text-secondary);font-weight:700;line-height:1.2;margin-top:2px}
+    .date-line-3 {font-size:10px;color:var(--text-tertiary);font-weight:700;line-height:1.2;margin-top:1px}
+
+    .timeline-body {position:relative;overflow:hidden}
+    .timeline-content {position:relative;width:100%}
+
+    .timeline-grid {position:absolute;top:0;left:24px;right:24px;bottom:0;display:flex;pointer-events:none}
+    .grid-line {flex:1;border-right:1px solid var(--border);min-width:40px}
+    .grid-line.today {background:linear-gradient(180deg,rgba(0,122,255,0.12) 0%,rgba(0,122,255,0.06) 100%);border-right:2px solid var(--primary)}
+    .grid-line.holiday {background:linear-gradient(180deg,rgba(255,149,0,0.08) 0%,rgba(255,149,0,0.04) 100%)}
+
+    .phases-container {position:relative;z-index:1;padding:0 24px;min-height:400px}
+
+    /* Row & bar sizing */
+    .phase-row {position:relative;height:92px;border-bottom:1px solid var(--border);display:flex;align-items:center}
+    .phase-row:last-child {border-bottom:none}
+    .phase-bar {position:absolute;top:16px;height:60px;background:linear-gradient(135deg,var(--phase-color) 0%,var(--phase-color-dark) 100%);border-radius:12px;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,0.12);overflow:hidden;min-width:40px;border:2px solid transparent;transition:all var(--transition-zoom)}
+    .phase-bar.selected {box-shadow:var(--shadow-strong);border-color:var(--primary);z-index:10}
+    .phase-content {padding:14px 18px;height:100%;display:flex;align-items:center;justify-content:space-between;color:#fff}
+    .phase-title {font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;text-shadow:0 1px 3px rgba(0,0,0,0.3)}
+    .phase-meta {display:flex;align-items:center;gap:8px;margin-left:12px}
+    .phase-duration {font-size:12px;opacity:.95;font-weight:800}
+
+    /* Resource chips on bars */
+    .resource-avatars {position:absolute;top:-4px;left:8px;display:flex;gap:2px;opacity:.95}
+    .resource-avatar {width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--text-primary);border:1px solid rgba(255,255,255,0.8)}
+    .resource-capacity {position:absolute;bottom:4px;left:8px;right:8px;height:4px;background:rgba(255,255,255,0.25);border-radius:3px;overflow:hidden}
+    .resource-fill {height:100%;background:rgba(255,255,255,0.85)}
+
+    /* Empty */
+    .empty-state {display:flex;flex-direction:column;align-items:center;justify-content:center;height:360px;color:var(--text-secondary)}
+    .empty-icon {font-size:44px;margin-bottom:12px;opacity:.5}
+    .empty-title {font-size:18px;font-weight:800;margin-bottom:6px}
+    .empty-subtitle {font-size:14px;text-align:center;margin-bottom:16px;max-width:360px;line-height:1.4}
+
+    .phase-bar:hover .phase-delete-btn { opacity: 1; }
+    .phase-delete-btn:hover {
+      background: #ff1744 !important;
+      transform: scale(1.1);
+    }
+
+    .backdrop {position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);opacity:0;pointer-events:none;transition:opacity .45s var(--transition);z-index:99}
+    .backdrop.open {opacity:1;pointer-events:auto}
+
+    /* Notifications */
+    @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* 10+ year timeline special handling */
+    .timeline-body.scrollable {overflow-x:auto}
+    .timeline-header-inner.scrollable {overflow-x:auto}
+  `;
+
+  /* ======= STATE ======= */
+  const [phases, setPhases] = useState([]);
+  const [holidays, setHolidays] = useState([
+    { id: 1, date: "2025-01-01", name: "New Year" },
+    { id: 2, date: "2025-02-01", name: "Chinese New Year" },
+    { id: 3, date: "2025-02-02", name: "Chinese New Year Holiday" },
+    { id: 4, date: "2025-05-01", name: "Labour Day" },
+    { id: 5, date: "2025-05-13", name: "Vesak Day" },
+    { id: 6, date: "2025-06-02", name: "Agong's Birthday" },
+    { id: 7, date: "2025-08-31", name: "National Day" },
+    { id: 8, date: "2025-09-16", name: "Malaysia Day" },
+    { id: 9, date: "2025-10-27", name: "Deepavali" },
+    { id: 10, date: "2025-12-25", name: "Christmas" }
+  ]);
+  const [selectedPhase, setSelectedPhase] = useState(null);
+  const [detailPanelOpen, setDetailPanelOpen] = useState(false);
+  const [clientPresentationMode, setClientPresentationMode] = useState(false);
+  const [sapScopeOpen, setSapScopeOpen] = useState(false);
+  const [selectedCatalogRegion, setSelectedCatalogRegion] = useState("ABMY");
+  const [notifications, setNotifications] = useState([]);
+
+  // Resource Catalog
+  const RESOURCE_CATALOG = {
+    ABMY: {
+      currency: "MYR",
+      positions: {
+        "Project Manager": { rate: 1200 },
+        "Solution Architect": { rate: 1500 },
+        "Technical Consultant": { rate: 1000 },
+        "Functional Consultant": { rate: 900 },
+        "Developer": { rate: 800 },
+        "Business Analyst": { rate: 850 },
+        "Tester": { rate: 600 },
+        "Change Manager": { rate: 950 }
+      }
+    }
+  };
+
+  /* =====================
+     DATE / TIMELINE UTILS
+     ===================== */
+  const BUSINESS_DAY_BASE_DATE = useMemo(() => {
+    const today = new Date();
+    const dow = today.getDay();
+    const daysToAdd = dow === 1 ? 0 : (8 - dow) % 7;
+    const nextMonday = new Date(today);
+    nextMonday.setDate(today.getDate() + daysToAdd);
+    return nextMonday;
+  }, []);
+
+  const businessDayToDate = (index, hols = holidays, skipHolidays = true, baseDate = BUSINESS_DAY_BASE_DATE) => {
+    const start = new Date(baseDate);
+    const holidaySet = new Set((hols || []).map(h => h.date));
+    let d = new Date(start);
+    let count = 0;
+    if (index <= 0) return d;
+    while (count < index) {
+      d.setDate(d.getDate() + 1);
+      const dow = d.getDay();
+      const ymd = d.toISOString().split("T")[0];
+      const weekday = dow >= 1 && dow <= 5;
+      const isHol = holidaySet.has(ymd);
+      if (weekday && (!skipHolidays || !isHol)) count++;
+    }
+    return d;
+  };
+
+  const dateToBusinessDay = (dateInput, hols = holidays, skipHolidays = true, baseDate = BUSINESS_DAY_BASE_DATE) => {
+    const target = new Date(dateInput);
+    const holidaySet = new Set((hols || []).map(h => h.date));
+    const start = new Date(baseDate);
+    if (target <= start) return 0;
+    let d = new Date(start);
+    let idx = 0;
+    while (d < target) {
+      d.setDate(d.getDate() + 1);
+      const dow = d.getDay();
+      const ymd = d.toISOString().split("T")[0];
+      const weekday = dow >= 1 && dow <= 5;
+      const isHol = holidaySet.has(ymd);
+      if (weekday && (!skipHolidays || !isHol)) idx++;
+    }
+    return idx;
+  };
+
+  /* ==========================
+     ENHANCED ZOOM LEVELS WITH STRICT RULES
+     ========================== */
+  const getOptimalZoomLevel = (spanBusinessDays, containerWidth, forceNoScroll = true) => {
+    const yearsSpan = spanBusinessDays / 260;
+    
+    if (yearsSpan > 10) {
+      return { 
+        name: "decade", 
+        unit: 2600,
+        minWidth: Math.floor(containerWidth / Math.ceil(yearsSpan / 10)),
+        label: "Decade",
+        allowScroll: true
+      };
+    }
+
+    const levels = [
+      { name: "daily", unit: 1, minWidth: 60, label: "Daily", maxDays: 30 },
+      { name: "weekly", unit: 5, minWidth: 80, label: "Weekly", maxDays: 90 },
+      { name: "biweekly", unit: 10, minWidth: 100, label: "Bi-weekly", maxDays: 180 },
+      { name: "monthly", unit: 22, minWidth: 120, label: "Monthly", maxDays: 365 },
+      { name: "quarterly", unit: 66, minWidth: 140, label: "Quarterly", maxDays: 1095 },
+      { name: "halfyearly", unit: 132, minWidth: 160, label: "Half-yearly", maxDays: 2190 },
+      { name: "yearly", unit: 260, minWidth: 180, label: "Yearly", maxDays: 2600 }
+    ];
+
+    if (forceNoScroll) {
+      for (const level of levels) {
+        if (level.name === "quarterly" && spanBusinessDays <= level.maxDays) {
+          const units = Math.ceil(spanBusinessDays / level.unit);
+          const adjustedWidth = Math.floor(containerWidth / units);
+          return { ...level, minWidth: Math.max(40, adjustedWidth) };
+        }
+        
+        const units = Math.ceil(spanBusinessDays / level.unit);
+        const requiredWidth = units * level.minWidth;
+        if (requiredWidth <= containerWidth && spanBusinessDays <= level.maxDays) {
+          return level;
+        }
+      }
+      
+      const quarterlyLevel = levels.find(l => l.name === "quarterly");
+      const units = Math.ceil(spanBusinessDays / quarterlyLevel.unit);
+      const adjustedWidth = Math.floor(containerWidth / units);
+      return { ...quarterlyLevel, minWidth: Math.max(40, adjustedWidth) };
+    }
+
+    for (const level of levels) {
+      if (spanBusinessDays <= level.maxDays) {
+        return level;
+      }
+    }
+    
+    return levels[levels.length - 1];
+  };
+
+  /* ==========================
+     HOLIDAY HIGHLIGHTING RULES
+     ========================== */
+  const shouldHighlightHoliday = (holidayCount, zoomLevel) => {
+    switch(zoomLevel.name) {
+      case "daily":
+      case "weekly":
+      case "biweekly":
+        return holidayCount > 0;
+      case "monthly":
+        return holidayCount >= 1;
+      case "quarterly":
+        return holidayCount > 3;
+      case "halfyearly":
+        return holidayCount > 7;
+      case "yearly":
+      case "decade":
+        return false;
+      default:
+        return false;
+    }
+  };
+
+  const countHolidaysInPeriod = (startDate, endDate, holidayList) => {
+    let count = 0;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    holidayList.forEach(h => {
+      const hDate = new Date(h.date);
+      if (hDate >= start && hDate <= end) {
+        const dow = hDate.getDay();
+        if (dow >= 1 && dow <= 5) {
+          count++;
+        }
+      }
+    });
+    
+    return count;
+  };
+
+  const formatDateForZoom = (startDate, zoomName, endDate = null) => {
+    const month = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+    const day = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+    
+    switch (zoomName) {
+      case "daily":
+      case "weekly":
+      case "biweekly": {
+        const d = startDate.getDate();
+        const ord = (x)=> (x>3 && x<21) ? "th" : (["th","st","nd","rd"][Math.min(x%10,4)] || "th");
+        return { line1: day[startDate.getDay()], line2: `${d}${ord(d)} ${month[startDate.getMonth()]}`, line3: String(startDate.getFullYear()) };
+      }
+      case "monthly":
+        return { line1: month[startDate.getMonth()], line2: String(startDate.getFullYear()), line3: "" };
+      case "quarterly": {
+        const q = Math.floor(startDate.getMonth()/3)+1;
+        return { line1:`Q${q}`, line2:String(startDate.getFullYear()), line3:"" };
+      }
+      case "halfyearly": {
+        const h = startDate.getMonth() < 6 ? "H1" : "H2";
+        return { line1:h, line2:String(startDate.getFullYear()), line3:"" };
+      }
+      case "yearly":
+        return { line1:String(startDate.getFullYear()), line2:"", line3:"" };
+      case "decade": {
+        const decade = Math.floor(startDate.getFullYear() / 10) * 10;
+        return { line1:`${decade}s`, line2:"", line3:"" };
+      }
+      default: 
+        return { line1:"", line2:"", line3:"" };
+    }
+  };
+
+  const generateBusinessDays = (startDate, totalBusinessDays) => {
+    const out = [];
+    const d = new Date(startDate);
+    let count = 0;
+    const holidaySet = new Set(holidays.map(h => h.date));
+    while (count < totalBusinessDays) {
+      const dow = d.getDay();
+      const ymd = d.toISOString().split("T")[0];
+      if (dow >= 1 && dow <= 5) {
+        const isHoliday = holidaySet.has(ymd);
+        const holiday = holidays.find(h => h.date === ymd);
+        out.push({
+          date: new Date(d),
+          dateString: ymd,
+          businessDayIndex: count,
+          isToday: ymd === new Date().toISOString().split("T")[0],
+          isHoliday,
+          holidayName: holiday?.name
+        });
+        count++;
+      }
+      d.setDate(d.getDate() + 1);
+    }
+    return out;
+  };
+
+  const generateZoomedBusinessDays = (startDate, totalBusinessDays, zoomLevel) => {
+    const base = generateBusinessDays(startDate, totalBusinessDays);
+    if (zoomLevel.name === "daily") {
+      return base.map(d => ({ 
+        ...d, 
+        isGroup: false, 
+        groupSize: 1, 
+        label: formatDateForZoom(d.date, "daily"),
+        holidayCount: d.isHoliday ? 1 : 0
+      }));
+    }
+    
+    const groups = [];
+    for (let i = 0; i < base.length; i += zoomLevel.unit) {
+      const slice = base.slice(i, i + zoomLevel.unit);
+      if (!slice.length) break;
+      
+      const first = slice[0];
+      const last = slice[slice.length - 1];
+      const holidayCount = countHolidaysInPeriod(first.date, last.date, holidays);
+      const showHolidayColor = shouldHighlightHoliday(holidayCount, zoomLevel);
+      
+      groups.push({
+        date: first.date,
+        dateString: first.dateString,
+        businessDayIndex: first.businessDayIndex,
+        isToday: slice.some(x => x.isToday),
+        isHoliday: showHolidayColor,
+        holidayName: showHolidayColor ? `${holidayCount} holidays` : null,
+        isGroup: true,
+        groupSize: slice.length,
+        groupEnd: last.date,
+        label: formatDateForZoom(first.date, zoomLevel.name, last.date),
+        holidayCount
+      });
+    }
+    
+    return groups;
+  };
+
+  const calculateEndDate = (startDate, workingDays, hols = holidays, skipHolidays = true) => {
+    let d = new Date(startDate);
+    let added = 0;
+    const holidaySet = new Set((hols || []).map((h) => h.date));
+    while (added < workingDays) {
+      const dow = d.getDay();
+      const ymd = d.toISOString().split("T")[0];
+      const weekday = dow >= 1 && dow <= 5;
+      const isHol = holidaySet.has(ymd);
+      if (weekday && (!skipHolidays || !isHol)) added++;
+      if (added < workingDays) d.setDate(d.getDate() + 1);
+    }
+    return d;
+  };
+
+  /* ==========================
+     CRITICAL FIX: PHASE POSITIONING WITH INTELLIGENT FITTING
+     ========================== */
+  const getPhasePosition = useCallback((phase) => {
+    const container = document.querySelector(".timeline-body");
+    const containerWidth = container ? container.clientWidth - 48 : 900;
+    const zoomLevel = window.currentZoomLevel || { unit: 1, minWidth: 80 };
+    const offset = window.timelineStartOffset || 0;
+    
+    const relativeStart = Math.max(0, phase.startBusinessDay - offset);
+    const totalUnits = Math.ceil((window.totalTimelineSpan || 100) / zoomLevel.unit);
+    
+    const actualUnitWidth = containerWidth / totalUnits;
+    const startUnit = relativeStart / zoomLevel.unit;
+    const left = startUnit * actualUnitWidth;
+    
+    const durationUnits = phase.workingDays / zoomLevel.unit;
+    const width = Math.max(durationUnits * actualUnitWidth, 40);
+    
+    return { 
+      left: `${left}px`, 
+      width: `${width}px`,
+      position: 'absolute'
+    };
+  }, []);
+
+  /* ==========================
+     TIMELINE MEASURE & ZOOM - ENHANCED
+     ========================== */
+  const memoizedTimelineData = useMemo(() => {
+    if (!phases.length) {
+      const zoomLevel = { name: "daily", unit: 1, minWidth: 80, label: "Daily" };
+      const totalBusinessDays = 30;
+      const businessDays = generateZoomedBusinessDays(BUSINESS_DAY_BASE_DATE, totalBusinessDays, zoomLevel);
+      window.timelineStartOffset = 0;
+      window.currentZoomLevel = zoomLevel;
+      window.totalTimelineSpan = totalBusinessDays;
+      return { businessDays, totalBusinessDays, zoomLevel, startOffset: 0, allowScroll: false };
+    }
+
+    const minStart = Math.min(...phases.map((p) => p.startBusinessDay));
+    const maxEnd = Math.max(...phases.map((p) => p.startBusinessDay + p.workingDays));
+    const startOffset = Math.max(0, minStart - 2);
+    const totalSpan = maxEnd - startOffset + 5;
+
+    const container = document.querySelector(".timeline-body");
+    const containerWidth = container ? container.clientWidth - 48 : 900;
+    
+    const zoomLevel = getOptimalZoomLevel(totalSpan, containerWidth, true);
+
+    window.timelineStartOffset = startOffset;
+    window.currentZoomLevel = zoomLevel;
+    window.totalTimelineSpan = totalSpan;
+
+    const businessDays = generateZoomedBusinessDays(
+      businessDayToDate(startOffset, holidays, true, BUSINESS_DAY_BASE_DATE), 
+      totalSpan, 
+      zoomLevel
+    );
+    
+    return { 
+      businessDays, 
+      totalBusinessDays: totalSpan, 
+      zoomLevel, 
+      startOffset,
+      allowScroll: zoomLevel.allowScroll || false
+    };
+  }, [phases, holidays]);
+
+  const autoFitTimeline = useCallback(() => {
+    const bodyScroll = document.querySelector(".timeline-body");
+    const headerScroll = document.querySelector(".timeline-header-inner");
+    if (!bodyScroll) return;
+
+    if (!phases.length) {
+      window.currentZoomLevel = { name: "daily", unit: 1, minWidth: 80, label: "Daily" };
+      window.timelineStartOffset = 0;
+      window.totalTimelineSpan = 30;
+      
+      if (headerScroll) headerScroll.classList.remove("scrollable");
+      bodyScroll.classList.remove("scrollable");
+      return;
+    }
+
+    const containerWidth = bodyScroll.clientWidth - 48;
+    const minStart = Math.min(...phases.map((p) => p.startBusinessDay));
+    const maxEnd = Math.max(...phases.map((p) => p.startBusinessDay + p.workingDays));
+    const totalSpan = maxEnd - minStart + 5;
+
+    const zoomLevel = getOptimalZoomLevel(totalSpan, containerWidth, true);
+    
+    window.currentZoomLevel = zoomLevel;
+    window.timelineStartOffset = Math.max(0, minStart - 2);
+    window.totalTimelineSpan = totalSpan;
+    
+    if (zoomLevel.allowScroll) {
+      bodyScroll.classList.add("scrollable");
+      if (headerScroll) headerScroll.classList.add("scrollable");
+    } else {
+      bodyScroll.classList.remove("scrollable");
+      if (headerScroll) headerScroll.classList.remove("scrollable");
+    }
+  }, [phases]);
+
+  useEffect(() => {
+    const t = setTimeout(() => autoFitTimeline(), 120);
+    return () => clearTimeout(t);
+  }, [phases, autoFitTimeline]);
+
+  useEffect(() => {
+    if (selectedPhase) {
+      const fresh = phases.find((p) => p.id === selectedPhase.id);
+      if (fresh) setSelectedPhase(fresh);
+    }
+  }, [phases]);
+
+  useEffect(() => {
+    if (phases.length > 0) {
+      const t = setTimeout(() => autoFitTimeline(), 50);
+      return () => clearTimeout(t);
+    }
+  }, [holidays, autoFitTimeline]);
+
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+        e.preventDefault();
+        setClientPresentationMode(!clientPresentationMode);
+      }
+    };
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [clientPresentationMode]);
+
+  /* ======================
+     PROJECT DATE HELPERS
+     ====================== */
+  const getProjectStartDate = () => {
+    if (!phases.length) return null;
+    const earliest = phases.reduce((e,p)=> p.startBusinessDay < e.startBusinessDay ? p : e);
+    return businessDayToDate(earliest.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE);
+  };
+
+  const getProjectEndDate = () => {
+    if (!phases.length) return null;
+    const last = phases.reduce((l, p) => {
+      const curEnd = p.startBusinessDay + p.workingDays;
+      const lastEnd = l.startBusinessDay + l.workingDays;
+      return curEnd > lastEnd ? p : l;
+    });
+    return calculateEndDate(
+      businessDayToDate(last.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE),
+      last.workingDays,
+      holidays,
+      last.skipHolidays
+    );
+  };
+
+  const getProjectDuration = () => {
+    if (!phases.length) return null;
+    const start = getProjectStartDate();
+    const end = getProjectEndDate();
+    if (!start || !end) return null;
+    const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+    const weeks = Math.floor(days / 7);
+    const remainingDays = days % 7;
+    return {
+      totalDays: days,
+      weeks,
+      remainingDays,
+      formatted: weeks > 0 ? `${weeks}w ${remainingDays}d` : `${days}d`
+    };
+  };
+
+  /* ==========================
+     PHASE CRUD / LAYOUT
+     ========================== */
+  const addPhase = () => {
+    const todayBusinessDay = dateToBusinessDay(new Date(), holidays, true, BUSINESS_DAY_BASE_DATE);
+    const minStartDay = Math.max(todayBusinessDay, 0);
+
+    const newPhase = {
+      id: Date.now(),
+      name: "New Phase",
+      phaseKey: "New Phase",
+      status: "idle",
+      startBusinessDay: phases.length
+        ? Math.max(minStartDay, ...phases.map((p) => p.startBusinessDay + p.workingDays))
+        : minStartDay,
+      workingDays: 5,
+      color: "#007AFF",
+      description: "",
+      skipHolidays: true,
+      resources: []
+    };
+    setPhases((p) => [...p, newPhase]);
+    setTimeout(() => autoFitTimeline(), 50);
+  };
+
+  const duplicatePhase = (id) => {
+    const src = phases.find(p => p.id === id);
+    if (!src) return;
+    const dup = {
+      ...src,
+      id: Date.now() + Math.random(),
+      name: src.name + " (Copy)",
+      startBusinessDay: src.startBusinessDay + src.workingDays
+    };
+    setPhases(prev => [...prev, dup]);
+    addNotification("Phase duplicated", "success", 2000);
+  };
+
+  const updatePhase = (id, updates) => {
+    setPhases((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+    setTimeout(() => autoFitTimeline(), 0);
+    addNotification("Phase updated", "success", 2500);
+  };
+
+  const deletePhase = (id) => {
+    if (window.confirm("Delete this phase?")) {
+      setPhases((prev) => prev.filter((p) => p.id !== id));
+      closePhaseDetail();
+    }
+  };
+
+  const openPhaseDetail = (p) => {
+    setSelectedPhase(p);
+    setDetailPanelOpen(true);
+  };
+
+  const closePhaseDetail = () => {
+    setDetailPanelOpen(false);
+    setTimeout(() => setSelectedPhase(null), 250);
+  };
+
+  /* ==========================
+     HELPERS & CALCULATIONS
+     ========================== */
+  const formatCurrency = (amount, region = "ABMY", options = {}) => {
+    if (clientPresentationMode) return "—";
+    const { currency = "MYR" } = RESOURCE_CATALOG[region] || {};
+    return new Intl.NumberFormat("en-MY", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+      ...options
+    }).format(amount);
+  };
+
+  const formatDateElegant = (date) => {
+    if (!date) return "—";
+    const d = new Date(date);
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  };
+
+  const calculatePhasePersonDays = (phase) => {
+    const resources = phase.resources || [];
+    if (!resources.length) return phase.workingDays;
+    return resources.reduce((sum, r) => sum + (phase.workingDays * (r.allocation || 100) / 100), 0);
+  };
+
+  const calculatePhaseCost = (phase) => {
+    const resources = phase.resources || [];
+    return resources.reduce((sum, r) => {
+      const rate = r.hourlyRate || RESOURCE_CATALOG[selectedCatalogRegion]?.positions[r.role]?.rate || 0;
+      return sum + (rate * 8 * phase.workingDays * (r.allocation || 100) / 100);
+    }, 0);
+  };
+
+  const getCategoryColor = (category) => {
+    const colors = {
+      "Configuration": "#007AFF",
+      "Advanced Configuration": "#5856D6",
+      "HR Setup": "#34C759",
+      "SCM Setup": "#FF9500",
+      "Testing": "#AF52DE",
+      "Training": "#FF3B30",
+      "Data Migration": "#00C7BE",
+      "Go-Live": "#FF2D55"
+    };
+    return colors[category] || "#007AFF";
+  };
+
+  const colorVars = (color) => ({
+    "--phase-color": color,
+    "--phase-color-dark": color.replace(")", ", 0.8)").replace("rgb", "rgba")
+  });
+
+  const initials = (name) => {
+    if (!name) return "?";
+    return name.split(" ").map(w => w[0]).join("").toUpperCase().substring(0, 2);
+  };
+
+  const avgAllocation = (resources) => {
+    if (!resources || !resources.length) return 0;
+    return Math.min(100, resources.reduce((sum, r) => sum + (r.allocation || 100), 0) / resources.length);
+  };
+
+  const addNotification = (message, type = "info", duration = 3000) => {
+    const id = Date.now();
+    setNotifications(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, duration);
+  };
+
+  const projectDuration = getProjectDuration();
+  const projectCost = phases.reduce((sum, p) => sum + calculatePhaseCost(p), 0);
+  const totalPersonDays = phases.reduce((sum, p) => sum + calculatePhasePersonDays(p), 0);
+  const blendedRate = totalPersonDays > 0 ? projectCost / totalPersonDays : 0;
+
+  const { businessDays, zoomLevel, startOffset, allowScroll } = memoizedTimelineData;
+
+  /* ==========================
+     RENDER
+     ========================== */
+  return (
+    <>
+      <style>{styles}</style>
+      <div className="app">
+        <div className="header">
+          <div>
+            <h1 className="title">SAP Implementation Timeline</h1>
+            <div className="project-status-bar">
+              <div className="status-metric">
+                🚩 <span className="status-metric-value">{formatDateElegant(getProjectStartDate())}</span>
+              </div>
+              <div className="status-separator" />
+              <div className="status-metric">
+                🏁 <span className="status-metric-value">{formatDateElegant(getProjectEndDate())}</span>
+              </div>
+              <div className="status-separator" />
+              <div className="status-metric">
+                ⏱️ <span className="status-metric-value">{projectDuration?.formatted || "—"}</span>
+              </div>
+              <div className="status-separator" />
+              <div className="status-metric">
+                🔍 <span className="status-metric-value">{zoomLevel.label}</span>
+              </div>
+              
+              {!clientPresentationMode && (
+                <>
+                  <div className="status-separator" />
+                  <div className="status-metric">
+                    💰 <span className="status-metric-value">{formatCurrency(projectCost, selectedCatalogRegion)}</span>
+                  </div>
+                  <div className="status-separator" />
+                  <div className="status-metric">
+                    🧮 <span className="status-metric-value">{formatCurrency(blendedRate, selectedCatalogRegion)}/PD</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="header-controls">
+            <button 
+              className="secondary-action"
+              onClick={() => setSapScopeOpen(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Package size={16} />
+              SAP Scope
+            </button>
+            
+            <button
+              className="secondary-action"
+              onClick={() => setClientPresentationMode(!clientPresentationMode)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              {clientPresentationMode ? <Eye size={16} /> : <EyeOff size={16} />}
+              {clientPresentationMode ? 'Client' : 'Internal'}
+            </button>
+            
+            <button className="primary-action" onClick={addPhase}>
+              + Add Phase
+            </button>
+          </div>
+        </div>
+
+        <div className="timeline-container">
+          <div className="timeline-header">
+            <div className={`timeline-header-inner ${allowScroll ? 'scrollable' : ''}`}>
+              <div className="timeline-scale">
+                {businessDays.map((d, idx) => (
+                  <div 
+                    key={idx} 
+                    className={`scale-unit ${d.isToday ? "today" : ""} ${d.isHoliday ? "holiday" : ""}`}
+                    title={d.holidayName || ''}
+                  >
+                    <div className="date-line-1">{d.label?.line1}</div>
+                    <div className="date-line-2">{d.label?.line2}</div>
+                    {d.label?.line3 ? <div className="date-line-3">{d.label?.line3}</div> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className={`timeline-body ${allowScroll ? 'scrollable' : ''}`}>
+            <div className="timeline-content">
+              <div className="timeline-grid">
+                {businessDays.map((d, idx) => (
+                  <div key={idx} className={`grid-line ${d.isToday ? "today" : ""} ${d.isHoliday ? "holiday" : ""}`} />
+                ))}
+              </div>
+
+              <div className="phases-container">
+                {!phases.length ? (
+                  <div className="empty-state">
+                    <div className="empty-icon">📅</div>
+                    <div className="empty-title">No phases yet</div>
+                    <div className="empty-subtitle">
+                      Add your first project phase or import from SAP scope
+                    </div>
+                    <button className="primary-action" onClick={addPhase}>
+                      + Create First Phase
+                    </button>
+                  </div>
+                ) : (
+                  phases.map((p) => (
+                    <div key={p.id} className="phase-row">
+                      <div
+                        className={`phase-bar ${selectedPhase?.id === p.id ? "selected" : ""}`}
+                        style={{ 
+                          ...getPhasePosition(p), 
+                          ...colorVars(p.color || getCategoryColor(p.category || "Configuration"))
+                        }}
+                        onClick={() => openPhaseDetail(p)}
+                      >
+                        <div className="phase-content">
+                          <div className="phase-title">{p.name}</div>
+                          <div className="phase-meta">
+                            <div className="phase-duration">{p.workingDays}d</div>
+                          </div>
+                        </div>
+
+                        <div className="resource-avatars">
+                          {(p.resources || []).slice(0, 3).map((r) => (
+                            <div key={r.id} className="resource-avatar" title={`${r.name} (${r.role})`}>
+                              {initials(r.name)}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="resource-capacity">
+                          <div className="resource-fill" style={{ width: `${avgAllocation(p.resources)}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className={`backdrop ${detailPanelOpen ? "open" : ""}`} onClick={closePhaseDetail} />
+
+        <PhaseDetailPanel
+          phase={selectedPhase}
+          isOpen={detailPanelOpen}
+          onClose={closePhaseDetail}
+          updatePhase={updatePhase}
+          deletePhase={deletePhase}
+          duplicatePhase={duplicatePhase}
+          holidays={holidays}
+          clientPresentationMode={clientPresentationMode}
+          BUSINESS_DAY_BASE_DATE={BUSINESS_DAY_BASE_DATE}
+          formatDateElegant={formatDateElegant}
+          calculatePhasePersonDays={calculatePhasePersonDays}
+          calculatePhaseCost={calculatePhaseCost}
+          formatCurrency={formatCurrency}
+          selectedCatalogRegion={selectedCatalogRegion}
+          RESOURCE_CATALOG={RESOURCE_CATALOG}
+        />
+
+        {sapScopeOpen && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}>
+            <div style={{
+              background: 'white',
+              borderRadius: '16px',
+              width: '90%',
+              maxWidth: '1200px',
+              height: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                padding: '24px',
+                borderBottom: '1px solid var(--border)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <h2 style={{ margin: 0, fontSize: '24px', fontWeight: '900' }}>
+                  SAP Scope Builder
+                </h2>
+                <button
+                  onClick={() => setSapScopeOpen(false)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px'
+                  }}
+                >
+                  <X size={24} />
+                </button>
+              </div>
+              <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
+                <React.Suspense fallback={<div>Loading SAP Scope...</div>}>
+                  <SAPScopeApp />
+                </React.Suspense>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div style={{
+          position: 'fixed',
+          top: '24px',
+          right: '24px',
+          zIndex: 1000,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}>
+          {notifications.map(n => (
+            <div key={n.id} style={{
+              background: n.type === 'success' ? 'var(--success)' : 
+                        n.type === 'error' ? 'var(--danger)' : 'var(--primary)',
+              color: 'white',
+              padding: '12px 16px',
+              borderRadius: '8px',
+              boxShadow: 'var(--shadow-medium)',
+              animation: 'slideInRight 0.3s ease',
+              fontSize: '14px',
+              fontWeight: '600'
+            }}>
+              {n.message}
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}

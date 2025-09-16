@@ -1,245 +1,773 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { ChevronDown, ChevronRight, Calendar, Users, DollarSign, Download, Eye, EyeOff, Package, AlertCircle, TrendingUp, Clock, Target, Briefcase, X, Plus, Copy, Trash2, GripVertical, CheckCircle, Activity, Link2, Settings, Shield } from "lucide-react";
-import PhaseDetailPanel from "./PhaseDetailPanel";
-
-// Import SAP Scope components
-const SAPScopeApp = React.lazy(() => 
-  import('./SAPScopeApp').catch(() => ({ 
-    default: () => <div style={{ padding: '20px', textAlign: 'center' }}>SAP Scope Module Loading...</div> 
-  }))
-);
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { Calendar, Clock, Users, DollarSign, AlertCircle, Check, Trash2, Plus, ChevronDown, ChevronUp, Settings, Download, Upload, Copy, Search, Filter, BarChart2, TrendingUp, Package, Zap, Shield, Grid, List, Eye, EyeOff, Edit2, Save, X, ChevronRight, Moon, Sun, Briefcase, Target, MapPin, Building, Hash, Mail, Phone, Percent, User, UserPlus, UserMinus, Move, GripVertical } from 'lucide-react';
 
 export default function ProjectTimeline() {
-  /* =======================
+  /* ===========================
      DESIGN SYSTEM & GLOBAL CSS
-     ======================= */
+     =========================== */
   const styles = `
     :root {
-      --primary:#007AFF; --success:#34C759; --warning:#FF9500; --danger:#FF3B30;
-      --background:#F2F2F7; --surface:#FFFFFF;
-      --text-primary:#000000; --text-secondary:#8E8E93; --text-tertiary:#C7C7CC;
-      --border:rgba(0,0,0,0.06); --border-strong:rgba(0,0,0,0.12);
-      --shadow-soft:0 1px 3px rgba(0,0,0,0.12); --shadow-medium:0 8px 25px rgba(0,0,0,0.15); --shadow-strong:0 16px 40px rgba(0,0,0,0.25);
-      --radius:12px; --transition:cubic-bezier(0.25,0.46,0.45,0.94); --spring:cubic-bezier(0.175,0.885,0.32,1.275);
-      --unit-width:80px; --transition-zoom: 0.2s ease-out;
+      --primary: #007AFF;
+      --success: #34C759;
+      --warning: #FF9500;
+      --danger: #FF3B30;
+      --background: #F2F2F7;
+      --surface: #FFFFFF;
+      --text-primary: #000000;
+      --text-secondary: #8E8E93;
+      --text-tertiary: #C7C7CC;
+      --border: rgba(0, 0, 0, 0.06);
+      --border-strong: rgba(0, 0, 0, 0.12);
+      --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.12);
+      --shadow-medium: 0 8px 25px rgba(0, 0, 0, 0.15);
+      --shadow-strong: 0 16px 40px rgba(0, 0, 0, 0.25);
+      --radius: 12px;
+      --transition: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      --spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      --unit-width: 80px;
     }
-    * {box-sizing:border-box}
-    body {margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--background);color:var(--text-primary)}
-    .app {max-width:1400px;margin:0 auto;padding:24px;min-height:100vh}
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--background);
+      color: var(--text-primary);
+    }
+
+    .app {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+      min-height: 100vh;
+    }
 
     /* Header */
-    .header {display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:16px;flex-wrap:wrap}
-    .title {font-size:28px;font-weight:800;letter-spacing:-0.3px;margin:0}
-    .header-controls {display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-
-    .project-status-bar {display:flex;align-items:center;gap:12px;margin-top:6px;flex-wrap:wrap}
-    .status-metric {display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);font-weight:600}
-    .status-metric-value {color:var(--text-primary);font-weight:800}
-    .status-separator {width:1px;height:18px;background:var(--border)}
-
-    .primary-action {
-      background:var(--primary);color:#fff;border:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;
-      transition:all .3s var(--spring);box-shadow:var(--shadow-soft);position:relative;overflow:hidden
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      gap: 16px;
+      flex-wrap: wrap;
     }
-    .primary-action:hover {transform:translateY(-1px);box-shadow:var(--shadow-medium)}
-    .secondary-action {background:var(--surface);color:var(--text-primary);border:1px solid var(--border);padding:10px 12px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
-    .form-select {background:var(--surface)}
 
-    /* Timeline - ENHANCED FOR NO SCROLLBAR */
-    .timeline-container {background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow-soft);overflow:hidden;position:relative}
-    .timeline-header {border-bottom:1px solid var(--border);background:linear-gradient(180deg,#FFFFFF 0%,#FAFAFA 100%);position:sticky;top:0;z-index:10;backdrop-filter:blur(8px)}
-    .timeline-header-inner {padding:0 24px;overflow:hidden}
-    .timeline-scale {display:flex;width:100%}
-    .scale-unit {flex:1;text-align:center;border-right:1px solid var(--border);position:relative;padding:8px 4px;min-width:40px}
-    .scale-unit.today {background:rgba(0,122,255,0.10)}
-    .scale-unit.holiday {background:rgba(255,149,0,0.10);border-left:3px solid var(--warning)}
-    .date-line-1 {font-size:12px;font-weight:800;color:var(--text-primary);line-height:1.2}
-    .date-line-2 {font-size:11px;color:var(--text-secondary);font-weight:700;line-height:1.2;margin-top:2px}
-    .date-line-3 {font-size:10px;color:var(--text-tertiary);font-weight:700;line-height:1.2;margin-top:1px}
+    .title {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      margin: 0;
+    }
 
-    .timeline-body {position:relative;overflow:hidden}
-    .timeline-content {position:relative;width:100%}
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
 
-    .timeline-grid {position:absolute;top:0;left:24px;right:24px;bottom:0;display:flex;pointer-events:none}
-    .grid-line {flex:1;border-right:1px solid var(--border);min-width:40px}
-    .grid-line.today {background:linear-gradient(180deg,rgba(0,122,255,0.12) 0%,rgba(0,122,255,0.06) 100%);border-right:2px solid var(--primary)}
-    .grid-line.holiday {background:linear-gradient(180deg,rgba(255,149,0,0.08) 0%,rgba(255,149,0,0.04) 100%)}
+    .project-status-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
 
-    .phases-container {position:relative;z-index:1;padding:0 24px;min-height:400px}
+    .status-metric {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
 
-    /* Row & bar sizing */
-    .phase-row {position:relative;height:92px;border-bottom:1px solid var(--border);display:flex;align-items:center}
-    .phase-row:last-child {border-bottom:none}
-    .phase-bar {position:absolute;top:16px;height:60px;background:linear-gradient(135deg,var(--phase-color) 0%,var(--phase-color-dark) 100%);border-radius:12px;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,0.12);overflow:hidden;min-width:40px;border:2px solid transparent;transition:all var(--transition-zoom)}
-    .phase-bar.selected {box-shadow:var(--shadow-strong);border-color:var(--primary);z-index:10}
-    .phase-content {padding:14px 18px;height:100%;display:flex;align-items:center;justify-content:space-between;color:#fff}
-    .phase-title {font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;text-shadow:0 1px 3px rgba(0,0,0,0.3)}
-    .phase-meta {display:flex;align-items:center;gap:8px;margin-left:12px}
-    .phase-duration {font-size:12px;opacity:.95;font-weight:800}
+    .status-metric-value {
+      color: var(--text-primary);
+      font-weight: 800;
+    }
 
-    /* Resource chips on bars */
-    .resource-avatars {position:absolute;top:-4px;left:8px;display:flex;gap:2px;opacity:.95}
-    .resource-avatar {width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--text-primary);border:1px solid rgba(255,255,255,0.8)}
-    .resource-capacity {position:absolute;bottom:4px;left:8px;right:8px;height:4px;background:rgba(255,255,255,0.25);border-radius:3px;overflow:hidden}
-    .resource-fill {height:100%;background:rgba(255,255,255,0.85)}
+    .status-separator {
+      width: 1px;
+      height: 18px;
+      background: var(--border);
+    }
 
-    /* Empty */
-    .empty-state {display:flex;flex-direction:column;align-items:center;justify-content:center;height:360px;color:var(--text-secondary)}
-    .empty-icon {font-size:44px;margin-bottom:12px;opacity:.5}
-    .empty-title {font-size:18px;font-weight:800;margin-bottom:6px}
-    .empty-subtitle {font-size:14px;text-align:center;margin-bottom:16px;max-width:360px;line-height:1.4}
+    /* Buttons */
+    .primary-action {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all .3s var(--spring);
+      box-shadow: var(--shadow-soft);
+      display: inline-flex;
+      align-items: center;
+    }
 
-    .phase-bar:hover .phase-delete-btn { opacity: 1; }
+    .primary-action:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-medium);
+    }
+
+    .secondary-action {
+      background: var(--surface);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    /* Timeline Container */
+    .timeline-container {
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-soft);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .timeline-header {
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #FFFFFF 0%, #FAFAFA 100%);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(8px);
+    }
+
+    .timeline-header-inner {
+      padding: 0 24px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .timeline-header-inner::-webkit-scrollbar {
+      display: none;
+    }
+
+    .timeline-scale {
+      display: flex;
+      min-width: max-content;
+    }
+
+    .scale-unit {
+      min-width: var(--unit-width);
+      width: var(--unit-width);
+      text-align: center;
+      border-right: 1px solid var(--border);
+      position: relative;
+      padding: 8px 4px;
+      flex-shrink: 0;
+    }
+
+    .scale-unit.today {
+      background: rgba(0, 122, 255, 0.10);
+    }
+
+    .scale-unit.holiday {
+      background: rgba(255, 149, 0, 0.10);
+      border-left: 3px solid var(--warning);
+    }
+
+    .date-line-1 {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-primary);
+      line-height: 1.2;
+    }
+
+    .date-line-2 {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-weight: 700;
+      line-height: 1.2;
+      margin-top: 2px;
+    }
+
+    .date-line-3 {
+      font-size: 10px;
+      color: var(--text-tertiary);
+      font-weight: 700;
+      line-height: 1.2;
+      margin-top: 1px;
+    }
+
+    /* Timeline Body */
+    .timeline-body {
+      position: relative;
+      overflow-x: auto;
+    }
+
+    .timeline-content {
+      position: relative;
+      min-width: max-content;
+    }
+
+    .timeline-grid {
+      position: absolute;
+      top: 0;
+      left: 24px;
+      right: 24px;
+      bottom: 0;
+      display: flex;
+      pointer-events: none;
+      min-width: max-content;
+    }
+
+    .grid-line {
+      border-right: 1px solid var(--border);
+      min-width: var(--unit-width);
+      width: var(--unit-width);
+      flex-shrink: 0;
+    }
+
+    .grid-line.today {
+      background: rgba(0, 122, 255, 0.06);
+    }
+
+    .grid-line.holiday {
+      background: rgba(255, 149, 0, 0.04);
+    }
+
+    .timeline-phases {
+      position: relative;
+      padding: 24px;
+      min-height: 200px;
+      min-width: max-content;
+    }
+
+    /* Phase Bars */
+    .phase-bar {
+      position: absolute;
+      min-height: 52px;
+      border-radius: 10px;
+      padding: 0;
+      transition: all 0.3s var(--spring);
+      box-shadow: var(--shadow-soft);
+      cursor: pointer;
+      user-select: none;
+      overflow: visible;
+    }
+
+    .phase-bar:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+      z-index: 5;
+    }
+
+    .phase-bar.dragging {
+      opacity: 0.8;
+      z-index: 1000;
+      cursor: grabbing;
+    }
+
+    /* Drag Handle */
+    .phase-drag-handle {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 20px;
+      background: rgba(0, 0, 0, 0.1);
+      border-radius: 10px 0 0 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .phase-bar:hover .phase-drag-handle {
+      opacity: 1;
+    }
+
+    .phase-drag-handle:hover {
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    /* Phase Content */
+    .phase-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 12px 12px 32px;
+      min-height: 52px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .phase-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .phase-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .phase-info {
+      flex: 1;
+    }
+
+    .phase-title {
+      font-size: 14px;
+      font-weight: 900;
+      margin: 0;
+      line-height: 1.2;
+      color: #fff;
+    }
+
+    .phase-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .phase-duration {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.9);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255, 255, 255, 0.2);
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+    }
+
+    /* Resource Avatars */
+    .resource-avatars {
+      display: flex;
+      margin-left: 8px;
+    }
+
+    .resource-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      margin-left: -8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 900;
+      color: #fff;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .resource-avatar:first-child {
+      margin-left: 0;
+    }
+
+    .resource-count {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.8);
+      border: 2px solid #fff;
+      margin-left: -8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 900;
+      color: #fff;
+    }
+
+    /* Delete Button */
+    .phase-delete-btn {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #ff3b30;
+      color: #fff;
+      border: 2px solid #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      transition: all 0.2s ease;
+      z-index: 10;
+      box-shadow: 0 2px 8px rgba(255, 59, 48, 0.4);
+    }
+
+    .phase-bar:hover .phase-delete-btn {
+      opacity: 1;
+    }
+
     .phase-delete-btn:hover {
-      background: #ff1744 !important;
+      background: #ff1744;
       transform: scale(1.1);
     }
 
-    .backdrop {position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);opacity:0;pointer-events:none;transition:opacity .45s var(--transition);z-index:99}
-    .backdrop.open {opacity:1;pointer-events:auto}
+    /* Empty State */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px;
+      min-height: 200px;
+    }
+
+    .empty-icon {
+      width: 48px;
+      height: 48px;
+      color: var(--text-tertiary);
+      margin-bottom: 12px;
+    }
+
+    .empty-title {
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .empty-subtitle {
+      font-size: 14px;
+      text-align: center;
+      margin-bottom: 16px;
+      max-width: 360px;
+      line-height: 1.4;
+      color: var(--text-secondary);
+    }
+
+    /* Detail Panel */
+    .detail-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 420px;
+      height: 100vh;
+      background: var(--surface);
+      box-shadow: -8px 0 25px rgba(0, 0, 0, 0.15);
+      transform: translateX(100%);
+      transition: transform .45s var(--spring);
+      z-index: 100;
+      overflow-y: auto;
+    }
+
+    .detail-panel.open {
+      transform: translateX(0);
+    }
+
+    .detail-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, var(--surface) 0%, #F8F9FB 100%);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .detail-title {
+      font-size: 20px;
+      font-weight: 900;
+      margin: 0 0 4px 0;
+    }
+
+    .detail-subtitle {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin: 0;
+    }
+
+    .detail-content {
+      padding: 20px;
+    }
+
+    .detail-section {
+      margin-bottom: 24px;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 900;
+      margin: 0 0 10px 0;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 800;
+      margin-bottom: 6px;
+      color: var(--text-primary);
+    }
+
+    .form-input,
+    .form-select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      background: var(--surface);
+    }
+
+    .form-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+
+    .checkbox {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary);
+    }
+
+    .backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .45s var(--transition);
+      z-index: 99;
+    }
+
+    .backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
 
     /* Notifications */
-    @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-
-    /* 10+ year timeline special handling */
-    .timeline-body.scrollable {overflow-x:auto}
-    .timeline-header-inner.scrollable {overflow-x:auto}
-  `;
-
-  /* ======= STATE ======= */
-  const [phases, setPhases] = useState([]);
-  const [holidays, setHolidays] = useState([
-    { id: 1, date: "2025-01-01", name: "New Year" },
-    { id: 2, date: "2025-02-01", name: "Chinese New Year" },
-    { id: 3, date: "2025-02-02", name: "Chinese New Year Holiday" },
-    { id: 4, date: "2025-05-01", name: "Labour Day" },
-    { id: 5, date: "2025-05-13", name: "Vesak Day" },
-    { id: 6, date: "2025-06-02", name: "Agong's Birthday" },
-    { id: 7, date: "2025-08-31", name: "National Day" },
-    { id: 8, date: "2025-09-16", name: "Malaysia Day" },
-    { id: 9, date: "2025-10-27", name: "Deepavali" },
-    { id: 10, date: "2025-12-25", name: "Christmas" }
-  ]);
-  const [selectedPhase, setSelectedPhase] = useState(null);
-  const [detailPanelOpen, setDetailPanelOpen] = useState(false);
-  const [clientPresentationMode, setClientPresentationMode] = useState(false);
-  const [sapScopeOpen, setSapScopeOpen] = useState(false);
-  const [selectedCatalogRegion, setSelectedCatalogRegion] = useState("ABMY");
-  const [notifications, setNotifications] = useState([]);
-
-  // Resource Catalog
-  const RESOURCE_CATALOG = {
-    ABMY: {
-      currency: "MYR",
-      positions: {
-        "Project Manager": { rate: 1200 },
-        "Solution Architect": { rate: 1500 },
-        "Technical Consultant": { rate: 1000 },
-        "Functional Consultant": { rate: 900 },
-        "Developer": { rate: 800 },
-        "Business Analyst": { rate: 850 },
-        "Tester": { rate: 600 },
-        "Change Manager": { rate: 950 }
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
       }
     }
-  };
 
-  /* =====================
-     DATE / TIMELINE UTILS
-     ===================== */
-  const BUSINESS_DAY_BASE_DATE = useMemo(() => {
-    const today = new Date();
-    const dow = today.getDay();
-    const daysToAdd = dow === 1 ? 0 : (8 - dow) % 7;
-    const nextMonday = new Date(today);
-    nextMonday.setDate(today.getDate() + daysToAdd);
-    return nextMonday;
-  }, []);
-
-  const businessDayToDate = (index, hols = holidays, skipHolidays = true, baseDate = BUSINESS_DAY_BASE_DATE) => {
-    const start = new Date(baseDate);
-    const holidaySet = new Set((hols || []).map(h => h.date));
-    let d = new Date(start);
-    let count = 0;
-    if (index <= 0) return d;
-    while (count < index) {
-      d.setDate(d.getDate() + 1);
-      const dow = d.getDay();
-      const ymd = d.toISOString().split("T")[0];
-      const weekday = dow >= 1 && dow <= 5;
-      const isHol = holidaySet.has(ymd);
-      if (weekday && (!skipHolidays || !isHol)) count++;
+    /* Drag Ghost */
+    .drag-ghost {
+      position: absolute;
+      pointer-events: none;
+      opacity: 0.5;
+      border: 2px dashed var(--primary);
+      border-radius: 10px;
+      background: rgba(0, 122, 255, 0.1);
+      z-index: 999;
     }
-    return d;
-  };
+  `;
 
-  const dateToBusinessDay = (dateInput, hols = holidays, skipHolidays = true, baseDate = BUSINESS_DAY_BASE_DATE) => {
-    const target = new Date(dateInput);
-    const holidaySet = new Set((hols || []).map(h => h.date));
-    const start = new Date(baseDate);
-    if (target <= start) return 0;
-    let d = new Date(start);
-    let idx = 0;
-    while (d < target) {
-      d.setDate(d.getDate() + 1);
-      const dow = d.getDay();
-      const ymd = d.toISOString().split("T")[0];
-      const weekday = dow >= 1 && dow <= 5;
-      const isHol = holidaySet.has(ymd);
-      if (weekday && (!skipHolidays || !isHol)) idx++;
-    }
-    return idx;
+  /* ==========================
+     CONSTANTS & CONFIG
+     ========================== */
+  const BUSINESS_DAY_BASE_DATE = new Date('2025-01-20');
+  const DEFAULT_HOLIDAYS = [
+    { date: '2025-01-25', name: 'Chinese New Year Eve', type: 'public' },
+    { date: '2025-01-26', name: 'Chinese New Year', type: 'public' },
+    { date: '2025-01-27', name: 'Chinese New Year Holiday', type: 'public' },
+    { date: '2025-02-10', name: 'Thaipusam', type: 'public' },
+    { date: '2025-03-31', name: 'Hari Raya Puasa', type: 'public' },
+    { date: '2025-04-01', name: 'Hari Raya Puasa Holiday', type: 'public' },
+    { date: '2025-05-01', name: 'Labour Day', type: 'public' },
+    { date: '2025-05-12', name: 'Wesak Day', type: 'public' },
+    { date: '2025-06-02', name: "King's Birthday", type: 'public' },
+    { date: '2025-06-07', name: 'Hari Raya Haji', type: 'public' },
+    { date: '2025-08-31', name: 'National Day', type: 'public' },
+    { date: '2025-09-16', name: 'Malaysia Day', type: 'public' },
+    { date: '2025-10-22', name: 'Deepavali', type: 'public' },
+    { date: '2025-12-25', name: 'Christmas Day', type: 'public' }
+  ];
+
+  const RESOURCE_RATES = {
+    'Project Manager': 750,
+    'Solution Architect': 850,
+    'Technical Consultant': 650,
+    'Functional Consultant': 600,
+    'Developer': 550,
+    'Business Analyst': 500,
+    'Tester': 400,
+    'Change Manager': 600
   };
 
   /* ==========================
-     ENHANCED ZOOM LEVELS WITH STRICT RULES
+     STATE MANAGEMENT
      ========================== */
-  const getOptimalZoomLevel = (spanBusinessDays, containerWidth, forceNoScroll = true) => {
-    const yearsSpan = spanBusinessDays / 260;
+  const [phases, setPhases] = useState([]);
+  const [selectedPhase, setSelectedPhase] = useState(null);
+  const [detailPanelOpen, setDetailPanelOpen] = useState(false);
+  const [holidays, setHolidays] = useState(DEFAULT_HOLIDAYS);
+  const [notifications, setNotifications] = useState([]);
+  const [errors, setErrors] = useState({});
+  
+  // Drag & Drop States
+  const [draggedPhase, setDraggedPhase] = useState(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef(null);
+
+  /* ==========================
+     UTILITY FUNCTIONS
+     ========================== */
+  const isWeekend = (date) => {
+    const day = date.getDay();
+    return day === 0 || day === 6;
+  };
+
+  const isHoliday = (date, holidayList = holidays) => {
+    const dateStr = date.toISOString().split('T')[0];
+    return holidayList.some(h => h.date === dateStr);
+  };
+
+  const isBusinessDay = (date, holidayList = holidays) => {
+    return !isWeekend(date) && !isHoliday(date, holidayList);
+  };
+
+  const addBusinessDays = (startDate, days, holidayList = holidays) => {
+    const date = new Date(startDate);
+    let remainingDays = days;
     
-    if (yearsSpan > 10) {
-      return { 
-        name: "decade", 
-        unit: 2600,
-        minWidth: Math.floor(containerWidth / Math.ceil(yearsSpan / 10)),
-        label: "Decade",
-        allowScroll: true
-      };
-    }
-
-    const levels = [
-      { name: "daily", unit: 1, minWidth: 60, label: "Daily", maxDays: 30 },
-      { name: "weekly", unit: 5, minWidth: 80, label: "Weekly", maxDays: 90 },
-      { name: "biweekly", unit: 10, minWidth: 100, label: "Bi-weekly", maxDays: 180 },
-      { name: "monthly", unit: 22, minWidth: 120, label: "Monthly", maxDays: 365 },
-      { name: "quarterly", unit: 66, minWidth: 140, label: "Quarterly", maxDays: 1095 },
-      { name: "halfyearly", unit: 132, minWidth: 160, label: "Half-yearly", maxDays: 2190 },
-      { name: "yearly", unit: 260, minWidth: 180, label: "Yearly", maxDays: 2600 }
-    ];
-
-    if (forceNoScroll) {
-      for (const level of levels) {
-        if (level.name === "quarterly" && spanBusinessDays <= level.maxDays) {
-          const units = Math.ceil(spanBusinessDays / level.unit);
-          const adjustedWidth = Math.floor(containerWidth / units);
-          return { ...level, minWidth: Math.max(40, adjustedWidth) };
-        }
-        
-        const units = Math.ceil(spanBusinessDays / level.unit);
-        const requiredWidth = units * level.minWidth;
-        if (requiredWidth <= containerWidth && spanBusinessDays <= level.maxDays) {
-          return level;
-        }
+    while (remainingDays > 0) {
+      date.setDate(date.getDate() + 1);
+      if (isBusinessDay(date, holidayList)) {
+        remainingDays--;
       }
-      
-      const quarterlyLevel = levels.find(l => l.name === "quarterly");
-      const units = Math.ceil(spanBusinessDays / quarterlyLevel.unit);
-      const adjustedWidth = Math.floor(containerWidth / units);
-      return { ...quarterlyLevel, minWidth: Math.max(40, adjustedWidth) };
     }
+    
+    return date;
+  };
 
-    for (const level of levels) {
-      if (spanBusinessDays <= level.maxDays) {
+  const businessDaysBetween = (startDate, endDate, holidayList = holidays) => {
+    let count = 0;
+    const current = new Date(startDate);
+    
+    while (current < endDate) {
+      if (isBusinessDay(current, holidayList)) {
+        count++;
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    
+    return count;
+  };
+
+  const dateToBusinessDay = (date, holidayList = holidays, skipHolidays = true, baseDate = BUSINESS_DAY_BASE_DATE) => {
+    if (date < baseDate) return 0;
+    
+    if (skipHolidays) {
+      return businessDaysBetween(baseDate, date, holidayList);
+    } else {
+      const msPerDay = 1000 * 60 * 60 * 24;
+      return Math.floor((date - baseDate) / msPerDay);
+    }
+  };
+
+  const businessDayToDate = (businessDay, holidayList = holidays, skipHolidays = true, baseDate = BUSINESS_DAY_BASE_DATE) => {
+    if (businessDay <= 0) return new Date(baseDate);
+    
+    if (skipHolidays) {
+      return addBusinessDays(baseDate, businessDay, holidayList);
+    } else {
+      const date = new Date(baseDate);
+      date.setDate(date.getDate() + businessDay);
+      return date;
+    }
+  };
+
+  const calculateEndDate = (startDate, workingDays, holidayList = holidays, skipHolidays = true) => {
+    if (skipHolidays) {
+      return addBusinessDays(startDate, workingDays - 1, holidayList);
+    } else {
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + workingDays - 1);
+      return date;
+    }
+  };
+
+  const formatDate = (date) => {
+    return date.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  };
+
+  const formatDateElegant = (date) => {
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  const getCategoryColor = (category) => {
+    const colors = {
+      'Project Management': '#007AFF',
+      'Technical Setup': '#5856D6',
+      'Configuration': '#34C759',
+      'Development': '#FF9500',
+      'Testing': '#FF3B30',
+      'Training': '#AF52DE',
+      'Deployment': '#FF2D55',
+      'Change Management': '#00C7BE'
+    };
+    return colors[category] || '#007AFF';
+  };
+
+  /* ==========================
+     TIMELINE ZOOM & RENDERING
+     ========================== */
+  const getOptimalZoomLevel = (totalBusinessDays, containerWidth) => {
+    const levels = [
+      { name: 'daily', unit: 1, minWidth: 80, label: 'Daily' },
+      { name: 'weekly', unit: 5, minWidth: 100, label: 'Weekly' },
+      { name: 'biweekly', unit: 10, minWidth: 120, label: 'Bi-weekly' },
+      { name: 'monthly', unit: 20, minWidth: 140, label: 'Monthly' },
+      { name: 'quarterly', unit: 60, minWidth: 160, label: 'Quarterly' }
+    ];
+    
+    // Special case: if timeline exceeds 10 years, allow scrolling
+    if (totalBusinessDays > 2600) {
+      const level = levels[4]; // quarterly
+      document.documentElement.style.setProperty('--unit-width', `${level.minWidth}px`);
+      return level;
+    }
+    
+    // Find the best fit level
+    for (let i = 0; i < levels.length; i++) {
+      const level = levels[i];
+      const unitsNeeded = Math.ceil(totalBusinessDays / level.unit);
+      const totalWidth = unitsNeeded * level.minWidth;
+      
+      if (totalWidth <= containerWidth || i === levels.length - 1) {
+        const unitWidth = Math.max(level.minWidth, containerWidth / unitsNeeded);
+        document.documentElement.style.setProperty('--unit-width', `${unitWidth}px`);
         return level;
       }
     }
@@ -247,388 +775,317 @@ export default function ProjectTimeline() {
     return levels[levels.length - 1];
   };
 
-  /* ==========================
-     HOLIDAY HIGHLIGHTING RULES
-     ========================== */
-  const shouldHighlightHoliday = (holidayCount, zoomLevel) => {
-    switch(zoomLevel.name) {
-      case "daily":
-      case "weekly":
-      case "biweekly":
-        return holidayCount > 0;
-      case "monthly":
-        return holidayCount >= 1;
-      case "quarterly":
-        return holidayCount > 3;
-      case "halfyearly":
-        return holidayCount > 7;
-      case "yearly":
-      case "decade":
-        return false;
-      default:
-        return false;
-    }
-  };
-
-  const countHolidaysInPeriod = (startDate, endDate, holidayList) => {
-    let count = 0;
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+  const autoFitTimeline = useCallback(() => {
+    const bodyScroll = document.querySelector('.timeline-body');
+    if (!bodyScroll) return;
     
-    holidayList.forEach(h => {
-      const hDate = new Date(h.date);
-      if (hDate >= start && hDate <= end) {
-        const dow = hDate.getDay();
-        if (dow >= 1 && dow <= 5) {
-          count++;
+    if (!phases.length) {
+      document.documentElement.style.setProperty('--unit-width', '80px');
+      return;
+    }
+    
+    const containerWidth = bodyScroll.clientWidth - 48;
+    const minStart = Math.min(...phases.map(p => p.startBusinessDay));
+    const maxEnd = Math.max(...phases.map(p => p.startBusinessDay + p.workingDays));
+    const totalBusinessDays = maxEnd - minStart + 10; // Add padding
+    
+    getOptimalZoomLevel(totalBusinessDays, containerWidth);
+  }, [phases]);
+
+  const generateZoomedBusinessDays = (baseDate, totalDays, zoomLevel) => {
+    const days = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    for (let i = 0; i < Math.ceil(totalDays / zoomLevel.unit); i++) {
+      const startDay = i * zoomLevel.unit;
+      const date = businessDayToDate(startDay, holidays, true, baseDate);
+      const endDate = businessDayToDate(Math.min(startDay + zoomLevel.unit - 1, totalDays - 1), holidays, true, baseDate);
+      
+      // Check for holidays in the range based on zoom level
+      let hasHoliday = false;
+      if (zoomLevel.name === 'daily' || zoomLevel.name === 'weekly') {
+        const tempDate = new Date(date);
+        while (tempDate <= endDate) {
+          if (isHoliday(tempDate, holidays)) {
+            hasHoliday = true;
+            break;
+          }
+          tempDate.setDate(tempDate.getDate() + 1);
         }
+      } else if (zoomLevel.name === 'monthly') {
+        let holidayCount = 0;
+        const tempDate = new Date(date);
+        while (tempDate <= endDate) {
+          if (isHoliday(tempDate, holidays) && !isWeekend(tempDate)) {
+            holidayCount++;
+          }
+          tempDate.setDate(tempDate.getDate() + 1);
+        }
+        hasHoliday = holidayCount >= 1;
+      } else if (zoomLevel.name === 'quarterly') {
+        let holidayCount = 0;
+        const tempDate = new Date(date);
+        while (tempDate <= endDate) {
+          if (isHoliday(tempDate, holidays) && !isWeekend(tempDate)) {
+            holidayCount++;
+          }
+          tempDate.setDate(tempDate.getDate() + 1);
+        }
+        hasHoliday = holidayCount > 3;
       }
-    });
-    
-    return count;
-  };
-
-  const formatDateForZoom = (startDate, zoomName, endDate = null) => {
-    const month = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
-    const day = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
-    
-    switch (zoomName) {
-      case "daily":
-      case "weekly":
-      case "biweekly": {
-        const d = startDate.getDate();
-        const ord = (x)=> (x>3 && x<21) ? "th" : (["th","st","nd","rd"][Math.min(x%10,4)] || "th");
-        return { line1: day[startDate.getDay()], line2: `${d}${ord(d)} ${month[startDate.getMonth()]}`, line3: String(startDate.getFullYear()) };
-      }
-      case "monthly":
-        return { line1: month[startDate.getMonth()], line2: String(startDate.getFullYear()), line3: "" };
-      case "quarterly": {
-        const q = Math.floor(startDate.getMonth()/3)+1;
-        return { line1:`Q${q}`, line2:String(startDate.getFullYear()), line3:"" };
-      }
-      case "halfyearly": {
-        const h = startDate.getMonth() < 6 ? "H1" : "H2";
-        return { line1:h, line2:String(startDate.getFullYear()), line3:"" };
-      }
-      case "yearly":
-        return { line1:String(startDate.getFullYear()), line2:"", line3:"" };
-      case "decade": {
-        const decade = Math.floor(startDate.getFullYear() / 10) * 10;
-        return { line1:`${decade}s`, line2:"", line3:"" };
-      }
-      default: 
-        return { line1:"", line2:"", line3:"" };
-    }
-  };
-
-  const generateBusinessDays = (startDate, totalBusinessDays) => {
-    const out = [];
-    const d = new Date(startDate);
-    let count = 0;
-    const holidaySet = new Set(holidays.map(h => h.date));
-    while (count < totalBusinessDays) {
-      const dow = d.getDay();
-      const ymd = d.toISOString().split("T")[0];
-      if (dow >= 1 && dow <= 5) {
-        const isHoliday = holidaySet.has(ymd);
-        const holiday = holidays.find(h => h.date === ymd);
-        out.push({
-          date: new Date(d),
-          dateString: ymd,
-          businessDayIndex: count,
-          isToday: ymd === new Date().toISOString().split("T")[0],
-          isHoliday,
-          holidayName: holiday?.name
-        });
-        count++;
-      }
-      d.setDate(d.getDate() + 1);
-    }
-    return out;
-  };
-
-  const generateZoomedBusinessDays = (startDate, totalBusinessDays, zoomLevel) => {
-    const base = generateBusinessDays(startDate, totalBusinessDays);
-    if (zoomLevel.name === "daily") {
-      return base.map(d => ({ 
-        ...d, 
-        isGroup: false, 
-        groupSize: 1, 
-        label: formatDateForZoom(d.date, "daily"),
-        holidayCount: d.isHoliday ? 1 : 0
-      }));
-    }
-    
-    const groups = [];
-    for (let i = 0; i < base.length; i += zoomLevel.unit) {
-      const slice = base.slice(i, i + zoomLevel.unit);
-      if (!slice.length) break;
       
-      const first = slice[0];
-      const last = slice[slice.length - 1];
-      const holidayCount = countHolidaysInPeriod(first.date, last.date, holidays);
-      const showHolidayColor = shouldHighlightHoliday(holidayCount, zoomLevel);
-      
-      groups.push({
-        date: first.date,
-        dateString: first.dateString,
-        businessDayIndex: first.businessDayIndex,
-        isToday: slice.some(x => x.isToday),
-        isHoliday: showHolidayColor,
-        holidayName: showHolidayColor ? `${holidayCount} holidays` : null,
-        isGroup: true,
-        groupSize: slice.length,
-        groupEnd: last.date,
-        label: formatDateForZoom(first.date, zoomLevel.name, last.date),
-        holidayCount
+      days.push({
+        businessDay: startDay,
+        date,
+        endDate,
+        isToday: date <= today && today <= endDate,
+        isHoliday: hasHoliday,
+        label: formatDateLabel(date, endDate, zoomLevel)
       });
     }
     
-    return groups;
+    return days;
   };
 
-  const calculateEndDate = (startDate, workingDays, hols = holidays, skipHolidays = true) => {
-    let d = new Date(startDate);
-    let added = 0;
-    const holidaySet = new Set((hols || []).map((h) => h.date));
-    while (added < workingDays) {
-      const dow = d.getDay();
-      const ymd = d.toISOString().split("T")[0];
-      const weekday = dow >= 1 && dow <= 5;
-      const isHol = holidaySet.has(ymd);
-      if (weekday && (!skipHolidays || !isHol)) added++;
-      if (added < workingDays) d.setDate(d.getDate() + 1);
+  const formatDateLabel = (startDate, endDate, zoomLevel) => {
+    switch(zoomLevel.name) {
+      case 'daily':
+        return {
+          line1: startDate.toLocaleDateString('en-US', { weekday: 'short' }),
+          line2: startDate.getDate().toString(),
+          line3: startDate.toLocaleDateString('en-US', { month: 'short' })
+        };
+      case 'weekly':
+        return {
+          line1: `Week ${Math.ceil(startDate.getDate() / 7)}`,
+          line2: `${startDate.getDate()}-${endDate.getDate()}`,
+          line3: startDate.toLocaleDateString('en-US', { month: 'short' })
+        };
+      case 'biweekly':
+        return {
+          line1: `${startDate.getDate()}-${endDate.getDate()}`,
+          line2: startDate.toLocaleDateString('en-US', { month: 'short' }),
+          line3: startDate.getFullYear().toString()
+        };
+      case 'monthly':
+        return {
+          line1: `${startDate.getDate()}-${endDate.getDate()}`,
+          line2: startDate.toLocaleDateString('en-US', { month: 'short' }),
+          line3: startDate.getFullYear().toString()
+        };
+      case 'quarterly':
+        const startMonth = startDate.toLocaleDateString('en-US', { month: 'short' });
+        const endMonth = endDate.toLocaleDateString('en-US', { month: 'short' });
+        return {
+          line1: `${startMonth}-${endMonth}`,
+          line2: startDate.getFullYear().toString(),
+          line3: ''
+        };
+      default:
+        return { line1: '', line2: '', line3: '' };
     }
-    return d;
-  };
-
-  /* ==========================
-     CRITICAL FIX: PHASE POSITIONING WITH INTELLIGENT FITTING
-     ========================== */
-  const getPhasePosition = useCallback((phase) => {
-    const container = document.querySelector(".timeline-body");
-    const containerWidth = container ? container.clientWidth - 48 : 900;
-    const zoomLevel = window.currentZoomLevel || { unit: 1, minWidth: 80 };
-    const offset = window.timelineStartOffset || 0;
-    
-    const relativeStart = Math.max(0, phase.startBusinessDay - offset);
-    const totalUnits = Math.ceil((window.totalTimelineSpan || 100) / zoomLevel.unit);
-    
-    const actualUnitWidth = containerWidth / totalUnits;
-    const startUnit = relativeStart / zoomLevel.unit;
-    const left = startUnit * actualUnitWidth;
-    
-    const durationUnits = phase.workingDays / zoomLevel.unit;
-    const width = Math.max(durationUnits * actualUnitWidth, 40);
-    
-    return { 
-      left: `${left}px`, 
-      width: `${width}px`,
-      position: 'absolute'
-    };
-  }, []);
-
-  /* ==========================
-     TIMELINE MEASURE & ZOOM - ENHANCED
-     ========================== */
-  const memoizedTimelineData = useMemo(() => {
-    if (!phases.length) {
-      const zoomLevel = { name: "daily", unit: 1, minWidth: 80, label: "Daily" };
-      const totalBusinessDays = 30;
-      const businessDays = generateZoomedBusinessDays(BUSINESS_DAY_BASE_DATE, totalBusinessDays, zoomLevel);
-      window.timelineStartOffset = 0;
-      window.currentZoomLevel = zoomLevel;
-      window.totalTimelineSpan = totalBusinessDays;
-      return { businessDays, totalBusinessDays, zoomLevel, startOffset: 0, allowScroll: false };
-    }
-
-    const minStart = Math.min(...phases.map((p) => p.startBusinessDay));
-    const maxEnd = Math.max(...phases.map((p) => p.startBusinessDay + p.workingDays));
-    const startOffset = Math.max(0, minStart - 2);
-    const totalSpan = maxEnd - startOffset + 5;
-
-    const container = document.querySelector(".timeline-body");
-    const containerWidth = container ? container.clientWidth - 48 : 900;
-    
-    const zoomLevel = getOptimalZoomLevel(totalSpan, containerWidth, true);
-
-    window.timelineStartOffset = startOffset;
-    window.currentZoomLevel = zoomLevel;
-    window.totalTimelineSpan = totalSpan;
-
-    const businessDays = generateZoomedBusinessDays(
-      businessDayToDate(startOffset, holidays, true, BUSINESS_DAY_BASE_DATE), 
-      totalSpan, 
-      zoomLevel
-    );
-    
-    return { 
-      businessDays, 
-      totalBusinessDays: totalSpan, 
-      zoomLevel, 
-      startOffset,
-      allowScroll: zoomLevel.allowScroll || false
-    };
-  }, [phases, holidays]);
-
-  const autoFitTimeline = useCallback(() => {
-    const bodyScroll = document.querySelector(".timeline-body");
-    const headerScroll = document.querySelector(".timeline-header-inner");
-    if (!bodyScroll) return;
-
-    if (!phases.length) {
-      window.currentZoomLevel = { name: "daily", unit: 1, minWidth: 80, label: "Daily" };
-      window.timelineStartOffset = 0;
-      window.totalTimelineSpan = 30;
-      
-      if (headerScroll) headerScroll.classList.remove("scrollable");
-      bodyScroll.classList.remove("scrollable");
-      return;
-    }
-
-    const containerWidth = bodyScroll.clientWidth - 48;
-    const minStart = Math.min(...phases.map((p) => p.startBusinessDay));
-    const maxEnd = Math.max(...phases.map((p) => p.startBusinessDay + p.workingDays));
-    const totalSpan = maxEnd - minStart + 5;
-
-    const zoomLevel = getOptimalZoomLevel(totalSpan, containerWidth, true);
-    
-    window.currentZoomLevel = zoomLevel;
-    window.timelineStartOffset = Math.max(0, minStart - 2);
-    window.totalTimelineSpan = totalSpan;
-    
-    if (zoomLevel.allowScroll) {
-      bodyScroll.classList.add("scrollable");
-      if (headerScroll) headerScroll.classList.add("scrollable");
-    } else {
-      bodyScroll.classList.remove("scrollable");
-      if (headerScroll) headerScroll.classList.remove("scrollable");
-    }
-  }, [phases]);
-
-  useEffect(() => {
-    const t = setTimeout(() => autoFitTimeline(), 120);
-    return () => clearTimeout(t);
-  }, [phases, autoFitTimeline]);
-
-  useEffect(() => {
-    if (selectedPhase) {
-      const fresh = phases.find((p) => p.id === selectedPhase.id);
-      if (fresh) setSelectedPhase(fresh);
-    }
-  }, [phases]);
-
-  useEffect(() => {
-    if (phases.length > 0) {
-      const t = setTimeout(() => autoFitTimeline(), 50);
-      return () => clearTimeout(t);
-    }
-  }, [holidays, autoFitTimeline]);
-
-  useEffect(() => {
-    const handleKeyPress = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
-        e.preventDefault();
-        setClientPresentationMode(!clientPresentationMode);
-      }
-    };
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [clientPresentationMode]);
-
-  /* ======================
-     PROJECT DATE HELPERS
-     ====================== */
-  const getProjectStartDate = () => {
-    if (!phases.length) return null;
-    const earliest = phases.reduce((e,p)=> p.startBusinessDay < e.startBusinessDay ? p : e);
-    return businessDayToDate(earliest.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE);
-  };
-
-  const getProjectEndDate = () => {
-    if (!phases.length) return null;
-    const last = phases.reduce((l, p) => {
-      const curEnd = p.startBusinessDay + p.workingDays;
-      const lastEnd = l.startBusinessDay + l.workingDays;
-      return curEnd > lastEnd ? p : l;
-    });
-    return calculateEndDate(
-      businessDayToDate(last.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE),
-      last.workingDays,
-      holidays,
-      last.skipHolidays
-    );
-  };
-
-  const getProjectDuration = () => {
-    if (!phases.length) return null;
-    const start = getProjectStartDate();
-    const end = getProjectEndDate();
-    if (!start || !end) return null;
-    const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-    const weeks = Math.floor(days / 7);
-    const remainingDays = days % 7;
-    return {
-      totalDays: days,
-      weeks,
-      remainingDays,
-      formatted: weeks > 0 ? `${weeks}w ${remainingDays}d` : `${days}d`
-    };
   };
 
   /* ==========================
-     PHASE CRUD / LAYOUT
+     PHASE MANAGEMENT
      ========================== */
   const addPhase = () => {
     const todayBusinessDay = dateToBusinessDay(new Date(), holidays, true, BUSINESS_DAY_BASE_DATE);
     const minStartDay = Math.max(todayBusinessDay, 0);
-
+    
     const newPhase = {
       id: Date.now(),
       name: "New Phase",
-      phaseKey: "New Phase",
       status: "idle",
       startBusinessDay: phases.length
-        ? Math.max(minStartDay, ...phases.map((p) => p.startBusinessDay + p.workingDays))
+        ? Math.max(minStartDay, ...phases.map(p => p.startBusinessDay + p.workingDays))
         : minStartDay,
       workingDays: 5,
-      color: "#007AFF",
-      description: "",
+      color: '#007AFF',
+      description: '',
       skipHolidays: true,
-      resources: []
+      resources: [],
+      category: 'Configuration'
     };
-    setPhases((p) => [...p, newPhase]);
+    
+    setPhases(prev => [...prev, newPhase]);
     setTimeout(() => autoFitTimeline(), 50);
   };
 
-  const duplicatePhase = (id) => {
-    const src = phases.find(p => p.id === id);
-    if (!src) return;
-    const dup = {
-      ...src,
-      id: Date.now() + Math.random(),
-      name: src.name + " (Copy)",
-      startBusinessDay: src.startBusinessDay + src.workingDays
-    };
-    setPhases(prev => [...prev, dup]);
-    addNotification("Phase duplicated", "success", 2000);
-  };
-
   const updatePhase = (id, updates) => {
-    setPhases((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
-    setTimeout(() => autoFitTimeline(), 0);
-    addNotification("Phase updated", "success", 2500);
+    setPhases(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+    
+    if (selectedPhase?.id === id) {
+      setSelectedPhase(prev => ({ ...prev, ...updates }));
+    }
+    
+    setTimeout(() => autoFitTimeline(), 50);
   };
 
   const deletePhase = (id) => {
-    if (window.confirm("Delete this phase?")) {
-      setPhases((prev) => prev.filter((p) => p.id !== id));
+    setPhases(prev => prev.filter(p => p.id !== id));
+    if (selectedPhase?.id === id) {
       closePhaseDetail();
     }
   };
 
-  const openPhaseDetail = (p) => {
-    setSelectedPhase(p);
+  /* ==========================
+     DRAG & DROP HANDLERS
+     ========================== */
+  const handleDragStart = (e, phase) => {
+    setDraggedPhase(phase);
+    setIsDragging(true);
+    
+    // Calculate offset from mouse to phase start
+    const phaseElement = e.currentTarget;
+    const rect = phaseElement.getBoundingClientRect();
+    setDragOffset({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    });
+    
+    // Create transparent drag image
+    const dragImage = new Image();
+    dragImage.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAUEBAAAACwAAAAAAQABAAACAkQBADs=';
+    e.dataTransfer.setDragImage(dragImage, 0, 0);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    
+    if (!draggedPhase) return;
+    
+    // Calculate new business day based on drop position
+    const timelineBody = document.querySelector('.timeline-body');
+    const rect = timelineBody.getBoundingClientRect();
+    const scrollLeft = timelineBody.scrollLeft;
+    const x = e.clientX - rect.left + scrollLeft - 24; // Adjust for padding
+    
+    const unitWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--unit-width'));
+    const newBusinessDay = Math.max(0, Math.round(x / unitWidth));
+    
+    // Update phase position
+    updatePhase(draggedPhase.id, { startBusinessDay: newBusinessDay });
+    
+    // Reset drag state
+    setDraggedPhase(null);
+    setIsDragging(false);
+    
+    addNotification(`Moved ${draggedPhase.name} to day ${newBusinessDay}`, 'success');
+  };
+
+  const handleDragEnd = () => {
+    setDraggedPhase(null);
+    setIsDragging(false);
+  };
+
+  /* ==========================
+     CALCULATIONS
+     ========================== */
+  const calculatePhasePersonDays = (phase) => {
+    const totalAllocation = (phase.resources || []).reduce(
+      (sum, r) => sum + (r.allocation || 0) / 100,
+      0
+    );
+    return Math.round(phase.workingDays * totalAllocation);
+  };
+
+  const calculatePhaseCost = (phase) => {
+    const dailyCost = (phase.resources || []).reduce(
+      (sum, r) => sum + ((RESOURCE_RATES[r.role] || 400) * 8 * (r.allocation || 0) / 100),
+      0
+    );
+    return dailyCost * phase.workingDays;
+  };
+
+  const calculateTotalCost = () => {
+    return phases.reduce((sum, phase) => sum + calculatePhaseCost(phase), 0);
+  };
+
+  const calculateTotalDuration = () => {
+    if (!phases.length) return 0;
+    const minStart = Math.min(...phases.map(p => p.startBusinessDay));
+    const maxEnd = Math.max(...phases.map(p => p.startBusinessDay + p.workingDays));
+    return maxEnd - minStart;
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-MY', {
+      style: 'currency',
+      currency: 'MYR',
+      minimumFractionDigits: 0
+    }).format(amount);
+  };
+
+  /* ==========================
+     RESOURCE MANAGEMENT
+     ========================== */
+  const addResource = (phaseId) => {
+    const phase = phases.find(p => p.id === phaseId);
+    if (!phase) return;
+    
+    const newResource = {
+      id: Date.now(),
+      name: `Team Member ${(phase.resources?.length || 0) + 1}`,
+      role: 'Developer',
+      allocation: 100
+    };
+    
+    updatePhase(phaseId, {
+      resources: [...(phase.resources || []), newResource]
+    });
+  };
+
+  const updateResource = (phaseId, resourceId, updates) => {
+    setPhases(prev => prev.map(p => 
+      p.id === phaseId
+        ? {
+            ...p,
+            resources: (p.resources || []).map(r =>
+              r.id === resourceId ? { ...r, ...updates } : r
+            )
+          }
+        : p
+    ));
+  };
+
+  const deleteResource = (phaseId, resourceId) => {
+    setPhases(prev => prev.map(p => 
+      p.id === phaseId
+        ? {
+            ...p,
+            resources: (p.resources || []).filter(r => r.id !== resourceId)
+          }
+        : p
+    ));
+  };
+
+  /* ==========================
+     NOTIFICATIONS
+     ========================== */
+  const addNotification = (message, type = 'info', duration = 3000) => {
+    const id = Date.now();
+    const notification = { id, message, type };
+    
+    setNotifications(prev => [...prev, notification]);
+    
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, duration);
+  };
+
+  /* ==========================
+     PHASE DETAIL PANEL
+     ========================== */
+  const openPhaseDetail = (phase) => {
+    setSelectedPhase(phase);
     setDetailPanelOpen(true);
   };
 
@@ -638,84 +1095,75 @@ export default function ProjectTimeline() {
   };
 
   /* ==========================
-     HELPERS & CALCULATIONS
+     EFFECTS
      ========================== */
-  const formatCurrency = (amount, region = "ABMY", options = {}) => {
-    if (clientPresentationMode) return "—";
-    const { currency = "MYR" } = RESOURCE_CATALOG[region] || {};
-    return new Intl.NumberFormat("en-MY", {
-      style: "currency",
-      currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-      ...options
-    }).format(amount);
-  };
-
-  const formatDateElegant = (date) => {
-    if (!date) return "—";
-    const d = new Date(date);
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
-  };
-
-  const calculatePhasePersonDays = (phase) => {
-    const resources = phase.resources || [];
-    if (!resources.length) return phase.workingDays;
-    return resources.reduce((sum, r) => sum + (phase.workingDays * (r.allocation || 100) / 100), 0);
-  };
-
-  const calculatePhaseCost = (phase) => {
-    const resources = phase.resources || [];
-    return resources.reduce((sum, r) => {
-      const rate = r.hourlyRate || RESOURCE_CATALOG[selectedCatalogRegion]?.positions[r.role]?.rate || 0;
-      return sum + (rate * 8 * phase.workingDays * (r.allocation || 100) / 100);
-    }, 0);
-  };
-
-  const getCategoryColor = (category) => {
-    const colors = {
-      "Configuration": "#007AFF",
-      "Advanced Configuration": "#5856D6",
-      "HR Setup": "#34C759",
-      "SCM Setup": "#FF9500",
-      "Testing": "#AF52DE",
-      "Training": "#FF3B30",
-      "Data Migration": "#00C7BE",
-      "Go-Live": "#FF2D55"
+  useEffect(() => {
+    autoFitTimeline();
+    
+    const handleResize = () => {
+      autoFitTimeline();
     };
-    return colors[category] || "#007AFF";
-  };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [autoFitTimeline]);
 
-  const colorVars = (color) => ({
-    "--phase-color": color,
-    "--phase-color-dark": color.replace(")", ", 0.8)").replace("rgb", "rgba")
-  });
+  /* ==========================
+     MEMOIZED VALUES
+     ========================== */
+  const memoizedTimelineData = useMemo(() => {
+    if (!phases.length) {
+      const zoomLevel = { name: 'daily', unit: 1, minWidth: 80, label: 'Daily' };
+      const totalBusinessDays = 30;
+      const businessDays = generateZoomedBusinessDays(BUSINESS_DAY_BASE_DATE, totalBusinessDays, zoomLevel);
+      
+      return { businessDays, totalBusinessDays, zoomLevel };
+    }
+    
+    const minStart = Math.min(...phases.map(p => p.startBusinessDay));
+    const maxEnd = Math.max(...phases.map(p => p.startBusinessDay + p.workingDays));
+    const startOffset = Math.max(0, minStart - 2);
+    const totalBusinessDays = maxEnd - startOffset + 10;
+    
+    const container = document.querySelector('.timeline-body');
+    const containerWidth = container ? container.clientWidth - 48 : 900;
+    const zoomLevel = getOptimalZoomLevel(totalBusinessDays, containerWidth);
+    
+    const businessDays = generateZoomedBusinessDays(
+      businessDayToDate(startOffset, holidays, true, BUSINESS_DAY_BASE_DATE),
+      totalBusinessDays,
+      zoomLevel
+    );
+    
+    return { businessDays, totalBusinessDays, zoomLevel, startOffset };
+  }, [phases, holidays]);
 
-  const initials = (name) => {
-    if (!name) return "?";
-    return name.split(" ").map(w => w[0]).join("").toUpperCase().substring(0, 2);
-  };
-
-  const avgAllocation = (resources) => {
-    if (!resources || !resources.length) return 0;
-    return Math.min(100, resources.reduce((sum, r) => sum + (r.allocation || 100), 0) / resources.length);
-  };
-
-  const addNotification = (message, type = "info", duration = 3000) => {
-    const id = Date.now();
-    setNotifications(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-    }, duration);
-  };
-
-  const projectDuration = getProjectDuration();
-  const projectCost = phases.reduce((sum, p) => sum + calculatePhaseCost(p), 0);
-  const totalPersonDays = phases.reduce((sum, p) => sum + calculatePhasePersonDays(p), 0);
-  const blendedRate = totalPersonDays > 0 ? projectCost / totalPersonDays : 0;
-
-  const { businessDays, zoomLevel, startOffset, allowScroll } = memoizedTimelineData;
+  /* ==========================
+     PHASE POSITIONING
+     ========================== */
+  const getPhasePosition = useCallback((phase) => {
+    const unitWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--unit-width')) || 80;
+    const zoomLevel = memoizedTimelineData.zoomLevel || { unit: 1 };
+    const startOffset = memoizedTimelineData.startOffset || 0;
+    
+    // Calculate position relative to the start offset
+    const relativeBusinessDay = phase.startBusinessDay - startOffset;
+    const left = (relativeBusinessDay / zoomLevel.unit) * unitWidth;
+    const width = Math.max(40, (phase.workingDays / zoomLevel.unit) * unitWidth);
+    
+    // Calculate row to avoid overlaps
+    const phaseIndex = phases.findIndex(p => p.id === phase.id);
+    const row = phaseIndex % 3;
+    const top = 20 + row * 70;
+    
+    return {
+      position: 'absolute',
+      left: `${left}px`,
+      width: `${width}px`,
+      top: `${top}px`,
+      background: phase.color || getCategoryColor(phase.category || 'Configuration')
+    };
+  }, [phases, memoizedTimelineData]);
 
   /* ==========================
      RENDER
@@ -723,136 +1171,162 @@ export default function ProjectTimeline() {
   return (
     <>
       <style>{styles}</style>
+      
       <div className="app">
+        {/* Header */}
         <div className="header">
           <div>
             <h1 className="title">SAP Implementation Timeline</h1>
             <div className="project-status-bar">
               <div className="status-metric">
-                🚩 <span className="status-metric-value">{formatDateElegant(getProjectStartDate())}</span>
+                <Calendar size={16} />
+                <span>Duration: <span className="status-metric-value">{calculateTotalDuration()} days</span></span>
               </div>
               <div className="status-separator" />
               <div className="status-metric">
-                🏁 <span className="status-metric-value">{formatDateElegant(getProjectEndDate())}</span>
+                <Users size={16} />
+                <span>Phases: <span className="status-metric-value">{phases.length}</span></span>
               </div>
               <div className="status-separator" />
               <div className="status-metric">
-                ⏱️ <span className="status-metric-value">{projectDuration?.formatted || "—"}</span>
+                <DollarSign size={16} />
+                <span>Budget: <span className="status-metric-value">{formatCurrency(calculateTotalCost())}</span></span>
               </div>
-              <div className="status-separator" />
-              <div className="status-metric">
-                🔍 <span className="status-metric-value">{zoomLevel.label}</span>
-              </div>
-              
-              {!clientPresentationMode && (
-                <>
-                  <div className="status-separator" />
-                  <div className="status-metric">
-                    💰 <span className="status-metric-value">{formatCurrency(projectCost, selectedCatalogRegion)}</span>
-                  </div>
-                  <div className="status-separator" />
-                  <div className="status-metric">
-                    🧮 <span className="status-metric-value">{formatCurrency(blendedRate, selectedCatalogRegion)}/PD</span>
-                  </div>
-                </>
-              )}
             </div>
           </div>
-
+          
           <div className="header-controls">
-            <button 
-              className="secondary-action"
-              onClick={() => setSapScopeOpen(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <Package size={16} />
-              SAP Scope
-            </button>
-            
-            <button
-              className="secondary-action"
-              onClick={() => setClientPresentationMode(!clientPresentationMode)}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              {clientPresentationMode ? <Eye size={16} /> : <EyeOff size={16} />}
-              {clientPresentationMode ? 'Client' : 'Internal'}
-            </button>
-            
             <button className="primary-action" onClick={addPhase}>
-              + Add Phase
+              <Plus size={16} style={{ marginRight: 4 }} />
+              Add Phase
+            </button>
+            <button className="secondary-action" onClick={autoFitTimeline}>
+              <Settings size={16} style={{ marginRight: 4 }} />
+              Auto Fit
+            </button>
+            <button className="secondary-action">
+              <Download size={16} style={{ marginRight: 4 }} />
+              Export
             </button>
           </div>
         </div>
-
+        
+        {/* Timeline Container */}
         <div className="timeline-container">
+          {/* Timeline Header */}
           <div className="timeline-header">
-            <div className={`timeline-header-inner ${allowScroll ? 'scrollable' : ''}`}>
+            <div className="timeline-header-inner">
               <div className="timeline-scale">
-                {businessDays.map((d, idx) => (
-                  <div 
-                    key={idx} 
-                    className={`scale-unit ${d.isToday ? "today" : ""} ${d.isHoliday ? "holiday" : ""}`}
-                    title={d.holidayName || ''}
+                {memoizedTimelineData.businessDays.map((day, index) => (
+                  <div
+                    key={index}
+                    className={`scale-unit ${day.isToday ? 'today' : ''} ${day.isHoliday ? 'holiday' : ''}`}
                   >
-                    <div className="date-line-1">{d.label?.line1}</div>
-                    <div className="date-line-2">{d.label?.line2}</div>
-                    {d.label?.line3 ? <div className="date-line-3">{d.label?.line3}</div> : null}
+                    <div className="date-line-1">{day.label.line1}</div>
+                    <div className="date-line-2">{day.label.line2}</div>
+                    {day.label.line3 && <div className="date-line-3">{day.label.line3}</div>}
                   </div>
                 ))}
               </div>
             </div>
           </div>
-
-          <div className={`timeline-body ${allowScroll ? 'scrollable' : ''}`}>
+          
+          {/* Timeline Body */}
+          <div className="timeline-body">
             <div className="timeline-content">
+              {/* Grid Lines */}
               <div className="timeline-grid">
-                {businessDays.map((d, idx) => (
-                  <div key={idx} className={`grid-line ${d.isToday ? "today" : ""} ${d.isHoliday ? "holiday" : ""}`} />
+                {memoizedTimelineData.businessDays.map((day, index) => (
+                  <div
+                    key={index}
+                    className={`grid-line ${day.isToday ? 'today' : ''} ${day.isHoliday ? 'holiday' : ''}`}
+                  />
                 ))}
               </div>
-
-              <div className="phases-container">
-                {!phases.length ? (
+              
+              {/* Timeline Phases */}
+              <div 
+                className="timeline-phases"
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+              >
+                {phases.length === 0 ? (
                   <div className="empty-state">
-                    <div className="empty-icon">📅</div>
+                    <Package className="empty-icon" />
                     <div className="empty-title">No phases yet</div>
                     <div className="empty-subtitle">
-                      Add your first project phase or import from SAP scope
+                      Click "Add Phase" to start building your project timeline
                     </div>
-                    <button className="primary-action" onClick={addPhase}>
-                      + Create First Phase
-                    </button>
                   </div>
                 ) : (
-                  phases.map((p) => (
-                    <div key={p.id} className="phase-row">
-                      <div
-                        className={`phase-bar ${selectedPhase?.id === p.id ? "selected" : ""}`}
-                        style={{ 
-                          ...getPhasePosition(p), 
-                          ...colorVars(p.color || getCategoryColor(p.category || "Configuration"))
-                        }}
-                        onClick={() => openPhaseDetail(p)}
-                      >
-                        <div className="phase-content">
-                          <div className="phase-title">{p.name}</div>
-                          <div className="phase-meta">
-                            <div className="phase-duration">{p.workingDays}d</div>
+                  phases.map((phase) => (
+                    <div
+                      key={phase.id}
+                      className={`phase-bar ${isDragging && draggedPhase?.id === phase.id ? 'dragging' : ''}`}
+                      style={getPhasePosition(phase)}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, phase)}
+                      onDragEnd={handleDragEnd}
+                      onClick={() => openPhaseDetail(phase)}
+                    >
+                      {/* Drag Handle */}
+                      <div className="phase-drag-handle">
+                        <GripVertical size={14} color="rgba(255,255,255,0.8)" />
+                      </div>
+                      
+                      {/* Phase Content */}
+                      <div className="phase-content">
+                        <div className="phase-left">
+                          <div className="phase-info">
+                            <div className="phase-title">{phase.name}</div>
+                            <div className="phase-meta">
+                              <div className="phase-duration">
+                                <Clock size={10} />
+                                {phase.workingDays}d
+                              </div>
+                            </div>
                           </div>
                         </div>
-
-                        <div className="resource-avatars">
-                          {(p.resources || []).slice(0, 3).map((r) => (
-                            <div key={r.id} className="resource-avatar" title={`${r.name} (${r.role})`}>
-                              {initials(r.name)}
+                        
+                        <div className="phase-right">
+                          {/* Resource Avatars */}
+                          {phase.resources && phase.resources.length > 0 && (
+                            <div className="resource-avatars">
+                              {phase.resources.slice(0, 3).map((resource, idx) => (
+                                <div
+                                  key={resource.id}
+                                  className="resource-avatar"
+                                  style={{
+                                    background: `hsl(${(idx * 137.5) % 360}, 70%, 50%)`
+                                  }}
+                                  title={`${resource.name} (${resource.role})`}
+                                >
+                                  {resource.name ? resource.name.charAt(0).toUpperCase() : 'R'}
+                                </div>
+                              ))}
+                              {phase.resources.length > 3 && (
+                                <div className="resource-count">
+                                  +{phase.resources.length - 3}
+                                </div>
+                              )}
                             </div>
-                          ))}
-                        </div>
-
-                        <div className="resource-capacity">
-                          <div className="resource-fill" style={{ width: `${avgAllocation(p.resources)}%` }} />
+                          )}
                         </div>
                       </div>
+                      
+                      {/* Delete Button */}
+                      <button
+                        className="phase-delete-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`Delete "${phase.name}"?`)) {
+                            deletePhase(phase.id);
+                          }
+                        }}
+                        title="Delete phase"
+                      >
+                        <X size={12} />
+                      </button>
                     </div>
                   ))
                 )}
@@ -860,107 +1334,268 @@ export default function ProjectTimeline() {
             </div>
           </div>
         </div>
-
-        <div className={`backdrop ${detailPanelOpen ? "open" : ""}`} onClick={closePhaseDetail} />
-
-        <PhaseDetailPanel
-          phase={selectedPhase}
-          isOpen={detailPanelOpen}
-          onClose={closePhaseDetail}
-          updatePhase={updatePhase}
-          deletePhase={deletePhase}
-          duplicatePhase={duplicatePhase}
-          holidays={holidays}
-          clientPresentationMode={clientPresentationMode}
-          BUSINESS_DAY_BASE_DATE={BUSINESS_DAY_BASE_DATE}
-          formatDateElegant={formatDateElegant}
-          calculatePhasePersonDays={calculatePhasePersonDays}
-          calculatePhaseCost={calculatePhaseCost}
-          formatCurrency={formatCurrency}
-          selectedCatalogRegion={selectedCatalogRegion}
-          RESOURCE_CATALOG={RESOURCE_CATALOG}
-        />
-
-        {sapScopeOpen && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
-          }}>
-            <div style={{
-              background: 'white',
-              borderRadius: '16px',
-              width: '90%',
-              maxWidth: '1200px',
-              height: '90vh',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden'
-            }}>
-              <div style={{
-                padding: '24px',
-                borderBottom: '1px solid var(--border)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <h2 style={{ margin: 0, fontSize: '24px', fontWeight: '900' }}>
-                  SAP Scope Builder
-                </h2>
-                <button
-                  onClick={() => setSapScopeOpen(false)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: '4px'
-                  }}
-                >
-                  <X size={24} />
-                </button>
-              </div>
-              <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
-                <React.Suspense fallback={<div>Loading SAP Scope...</div>}>
-                  <SAPScopeApp />
-                </React.Suspense>
-              </div>
-            </div>
-          </div>
-        )}
-
+        
+        {/* Notifications */}
         <div style={{
           position: 'fixed',
-          top: '24px',
-          right: '24px',
+          top: 20,
+          right: 20,
           zIndex: 1000,
           display: 'flex',
           flexDirection: 'column',
-          gap: '8px'
+          gap: 8
         }}>
-          {notifications.map(n => (
-            <div key={n.id} style={{
-              background: n.type === 'success' ? 'var(--success)' : 
-                        n.type === 'error' ? 'var(--danger)' : 'var(--primary)',
-              color: 'white',
-              padding: '12px 16px',
-              borderRadius: '8px',
-              boxShadow: 'var(--shadow-medium)',
-              animation: 'slideInRight 0.3s ease',
-              fontSize: '14px',
-              fontWeight: '600'
-            }}>
-              {n.message}
+          {notifications.map(notification => (
+            <div
+              key={notification.id}
+              style={{
+                padding: '12px 16px',
+                borderRadius: 8,
+                background: notification.type === 'success' ? '#34C759' : 
+                           notification.type === 'error' ? '#FF3B30' : '#007AFF',
+                color: '#fff',
+                fontSize: 14,
+                fontWeight: 600,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                animation: 'slideInRight 0.3s ease-out'
+              }}
+            >
+              {notification.message}
             </div>
           ))}
         </div>
       </div>
+      
+      {/* Detail Panel */}
+      {selectedPhase && (
+        <>
+          <div className={`backdrop ${detailPanelOpen ? 'open' : ''}`} onClick={closePhaseDetail} />
+          <div className={`detail-panel ${detailPanelOpen ? 'open' : ''}`}>
+            <div className="detail-header">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div className="detail-title">{selectedPhase.name}</div>
+                  <div className="detail-subtitle">
+                    {formatDateElegant(businessDayToDate(selectedPhase.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE))} - 
+                    {' '}{formatDateElegant(calculateEndDate(
+                      businessDayToDate(selectedPhase.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE),
+                      selectedPhase.workingDays,
+                      holidays,
+                      selectedPhase.skipHolidays
+                    ))}
+                  </div>
+                </div>
+                <button className="secondary-action" onClick={closePhaseDetail}>
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            
+            <div className="detail-content">
+              {/* Basic Info */}
+              <div className="detail-section">
+                <h3 className="section-title">Basic Information</h3>
+                
+                <label className="form-label">Phase Name</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={selectedPhase.name}
+                  onChange={(e) => updatePhase(selectedPhase.id, { name: e.target.value })}
+                  style={{ marginBottom: 12 }}
+                />
+                
+                <label className="form-label">Working Days</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={selectedPhase.workingDays}
+                  onChange={(e) => updatePhase(selectedPhase.id, { workingDays: parseInt(e.target.value) || 1 })}
+                  min="1"
+                  style={{ marginBottom: 12 }}
+                />
+                
+                <label className="form-label">Category</label>
+                <select
+                  className="form-select"
+                  value={selectedPhase.category || 'Configuration'}
+                  onChange={(e) => updatePhase(selectedPhase.id, { 
+                    category: e.target.value,
+                    color: getCategoryColor(e.target.value)
+                  })}
+                  style={{ marginBottom: 12 }}
+                >
+                  <option value="Project Management">Project Management</option>
+                  <option value="Technical Setup">Technical Setup</option>
+                  <option value="Configuration">Configuration</option>
+                  <option value="Development">Development</option>
+                  <option value="Testing">Testing</option>
+                  <option value="Training">Training</option>
+                  <option value="Deployment">Deployment</option>
+                  <option value="Change Management">Change Management</option>
+                </select>
+                
+                <label className="form-label">Description</label>
+                <textarea
+                  className="form-input"
+                  value={selectedPhase.description || ''}
+                  onChange={(e) => updatePhase(selectedPhase.id, { description: e.target.value })}
+                  rows={3}
+                  style={{ marginBottom: 12, resize: 'vertical' }}
+                />
+                
+                <label className="form-checkbox">
+                  <input
+                    type="checkbox"
+                    className="checkbox"
+                    checked={selectedPhase.skipHolidays}
+                    onChange={(e) => updatePhase(selectedPhase.id, { skipHolidays: e.target.checked })}
+                  />
+                  Skip holidays and weekends
+                </label>
+              </div>
+              
+              {/* Resources */}
+              <div className="detail-section">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <h3 className="section-title" style={{ margin: 0 }}>Resources</h3>
+                  <button
+                    className="primary-action"
+                    onClick={() => addResource(selectedPhase.id)}
+                    style={{ padding: '6px 10px', fontSize: 12 }}
+                  >
+                    <UserPlus size={14} style={{ marginRight: 4 }} />
+                    Add
+                  </button>
+                </div>
+                
+                {selectedPhase.resources && selectedPhase.resources.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {selectedPhase.resources.map((resource) => (
+                      <div
+                        key={resource.id}
+                        style={{
+                          padding: 12,
+                          background: 'rgba(0,0,0,0.03)',
+                          borderRadius: 8,
+                          border: '1px solid var(--border)'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <input
+                            type="text"
+                            value={resource.name}
+                            onChange={(e) => updateResource(selectedPhase.id, resource.id, { name: e.target.value })}
+                            style={{
+                              border: 'none',
+                              background: 'transparent',
+                              fontSize: 14,
+                              fontWeight: 600,
+                              flex: 1
+                            }}
+                          />
+                          <button
+                            onClick={() => deleteResource(selectedPhase.id, resource.id)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              color: '#FF3B30'
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          <div>
+                            <label style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Role</label>
+                            <select
+                              value={resource.role}
+                              onChange={(e) => updateResource(selectedPhase.id, resource.id, { role: e.target.value })}
+                              style={{
+                                width: '100%',
+                                padding: 4,
+                                fontSize: 12,
+                                border: '1px solid var(--border)',
+                                borderRadius: 4
+                              }}
+                            >
+                              <option value="Project Manager">Project Manager</option>
+                              <option value="Solution Architect">Solution Architect</option>
+                              <option value="Technical Consultant">Technical Consultant</option>
+                              <option value="Functional Consultant">Functional Consultant</option>
+                              <option value="Developer">Developer</option>
+                              <option value="Business Analyst">Business Analyst</option>
+                              <option value="Tester">Tester</option>
+                              <option value="Change Manager">Change Manager</option>
+                            </select>
+                          </div>
+                          
+                          <div>
+                            <label style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Allocation %</label>
+                            <input
+                              type="number"
+                              value={resource.allocation}
+                              onChange={(e) => updateResource(selectedPhase.id, resource.id, { allocation: parseInt(e.target.value) || 0 })}
+                              min="0"
+                              max="100"
+                              style={{
+                                width: '100%',
+                                padding: 4,
+                                fontSize: 12,
+                                border: '1px solid var(--border)',
+                                borderRadius: 4
+                              }}
+                            />
+                          </div>
+                        </div>
+                        
+                        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+                          Rate: {formatCurrency(RESOURCE_RATES[resource.role] || 400)}/hour • 
+                          Daily: {formatCurrency((RESOURCE_RATES[resource.role] || 400) * 8 * (resource.allocation / 100))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
+                    No resources assigned
+                  </div>
+                )}
+              </div>
+              
+              {/* Summary */}
+              <div className="detail-section">
+                <h3 className="section-title">Summary</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Person Days:</span>
+                    <strong>{calculatePhasePersonDays(selectedPhase)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Total Cost:</span>
+                    <strong>{formatCurrency(calculatePhaseCost(selectedPhase))}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Start Date:</span>
+                    <strong>{formatDate(businessDayToDate(selectedPhase.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE))}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>End Date:</span>
+                    <strong>{formatDate(calculateEndDate(
+                      businessDayToDate(selectedPhase.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE),
+                      selectedPhase.workingDays,
+                      holidays,
+                      selectedPhase.skipHolidays
+                    ))}</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
