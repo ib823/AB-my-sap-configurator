@@ -1,6 +1,6 @@
-import React, { useState, useContext, createContext, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useContext, createContext, useCallback, useMemo } from "react";
 
-// Copy all your interfaces from the original file here
+// ======================== TYPE DEFINITIONS ========================
 interface SAPModule {
   id: string;
   name: string;
@@ -54,7 +54,7 @@ type MFCategory = "Statutory" | "Banking" | "HR" | "Finance" | "Compliance" | "S
 interface MalaysiaForm {
   id: string;
   form_name: string;
-  category: MFCategory | "Procurement" | "Sales" | "Logistics" | "Finance";
+  category: MFCategory;
   mandatory: boolean;
   effort_pd: number;
   description: string;
@@ -117,7 +117,7 @@ interface PackageChange {
 
 type RiskLevel = "LOW" | "MEDIUM" | "HIGH";
 
-interface RiskAssessmentT {
+interface RiskAssessment {
   overall_risk: RiskLevel;
   specific_risks: Array<{
     package: string;
@@ -151,9 +151,8 @@ interface AppState {
   floatingCardMinimized: boolean;
 }
 
-// Copy all your seed data here (COMPLETE_PACKAGE_LIBRARY, etc.)
+// ======================== SEED DATA ========================
 const COMPLETE_PACKAGE_LIBRARY: SAPPackage[] = [
-  // Your package data goes here
   {
     id: "financial_master_data",
     name: "Financial Master Data Management",
@@ -177,20 +176,126 @@ const COMPLETE_PACKAGE_LIBRARY: SAPPackage[] = [
         prerequisites: [],
         selected: false,
       },
-      // Add all other modules...
+      {
+        id: "cost_centers",
+        name: "Cost Center Accounting",
+        description: "Cost center hierarchy and allocation",
+        effort_pd: 38,
+        prerequisites: ["gl_setup"],
+        selected: false,
+      },
+      {
+        id: "profit_centers",
+        name: "Profit Center Accounting",
+        description: "Profit center structure",
+        effort_pd: 32,
+        prerequisites: ["gl_setup"],
+        selected: false,
+      }
     ],
     expanded: false,
     selected: false,
   },
-  // Add all other packages...
+  {
+    id: "accounts_payable",
+    name: "Accounts Payable",
+    category: "Finance Core",
+    description: "Vendor management, invoice processing, payment runs",
+    total_effort_pd: 165.5,
+    sgd_price: 115000,
+    layer: "core",
+    type: "core",
+    icon: "📤",
+    malaysia_verified: true,
+    critical_path: true,
+    prerequisites: ["financial_master_data"],
+    source: "Page 9",
+    modules: [
+      {
+        id: "vendor_master",
+        name: "Vendor Master Data",
+        description: "Vendor creation and maintenance",
+        effort_pd: 28,
+        prerequisites: [],
+        selected: false,
+      }
+    ],
+    expanded: false,
+    selected: false,
+  },
+  {
+    id: "sales_order_management",
+    name: "Sales Order Management",
+    category: "Sales & Distribution",
+    description: "Order to cash process, pricing, delivery",
+    total_effort_pd: 185.0,
+    sgd_price: 130000,
+    layer: "core",
+    type: "core",
+    icon: "💼",
+    malaysia_verified: true,
+    critical_path: true,
+    prerequisites: [],
+    source: "Page 15",
+    modules: [
+      {
+        id: "sales_order_processing",
+        name: "Sales Order Processing",
+        description: "Order creation and fulfillment",
+        effort_pd: 45,
+        prerequisites: [],
+        selected: false,
+      }
+    ],
+    expanded: false,
+    selected: false,
+  }
 ];
 
 const MALAYSIA_FORMS_LIBRARY: MalaysiaForm[] = [
-  // Your forms data
+  {
+    id: "ea_form",
+    form_name: "EA Form (Income Tax)",
+    category: "Statutory",
+    mandatory: true,
+    effort_pd: 8,
+    description: "Employee annual income tax statement",
+    regulatory_body: "LHDN",
+    selected: false,
+    sap_module: "HCM"
+  },
+  {
+    id: "cp39",
+    form_name: "CP39 (Tax Deduction)",
+    category: "Statutory",
+    mandatory: true,
+    effort_pd: 6,
+    description: "Monthly tax deduction schedule",
+    regulatory_body: "LHDN",
+    selected: false,
+    sap_module: "HCM"
+  }
 ];
 
 const PROJECT_SERVICES_LIBRARY: ProjectService[] = [
-  // Your services data
+  {
+    id: "pm_standard",
+    service_name: "Project Management Standard",
+    category: "Project Management",
+    effort_pd: 120,
+    description: "Standard project management services",
+    mandatory: true,
+    selected: false
+  },
+  {
+    id: "cutover",
+    service_name: "Cutover Planning & Execution",
+    category: "Cutover & Migration",
+    effort_pd: 45,
+    description: "Go-live preparation and cutover execution",
+    mandatory: true,
+    selected: false
+  }
 ];
 
 const DEFAULT_USER_ROLE: UserRole = {
@@ -204,33 +309,22 @@ const DEFAULT_USER_ROLE: UserRole = {
   },
 };
 
-const SUPER_USER_ROLE: UserRole = {
-  type: "super_user",
-  permissions: {
-    view_packages: true,
-    edit_packages: true,
-    create_packages: true,
-    delete_packages: true,
-    export_library: true,
-  },
-};
-
-// Fix the context definition - remove template literals from object keys
-const AppContext = createContext<{
+// ======================== CONTEXT DEFINITION ========================
+interface AppContextType {
   state: AppState;
   updatePackage: (id: string, updates: Partial<SAPPackage>) => void;
   updateClientProfile: (updates: Partial<ClientProfile>) => void;
   setSelectedView: (view: ViewKey) => void;
-  addIntegration: (integration: Omit<Integration, "id" | "effort_pd"> & { effort_pd?: number }) => void;
+  addIntegration: (integration: Omit<Integration, "id">) => void;
   removeIntegration: (id: string) => void;
   updateIntegration: (id: string, updates: Partial<Integration>) => void;
   updateMalaysiaForm: (id: string, updates: Partial<MalaysiaForm>) => void;
   updateProjectService: (id: string, updates: Partial<ProjectService>) => void;
   setBtpIntegrationEnabled: (enabled: boolean) => void;
   setAdminMode: (enabled: boolean) => void;
-  addPackage: (pkg: Omit<SAPPackage, "id" | "expanded" | "selected">) => void;
+  addPackage: (pkg: Omit<SAPPackage, "id">) => void;
   deletePackage: (id: string) => void;
-  addModule: (packageId: string, mod: Omit<SAPModule, "id" | "selected">) => void;
+  addModule: (packageId: string, mod: Omit<SAPModule, "id">) => void;
   updateModule: (packageId: string, moduleId: string, updates: Partial<SAPModule>) => void;
   deleteModule: (packageId: string, moduleId: string) => void;
   duplicatePackage: (id: string) => void;
@@ -238,14 +332,17 @@ const AppContext = createContext<{
   importLibrary: (data: any) => void;
   logChange: (change: Omit<PackageChange, "id" | "timestamp">) => void;
   validatePrerequisites: (packageId: string, moduleId?: string) => { valid: boolean; missing: string[] };
-  setFloatingCardMinimized: (b: boolean) => void;
+  setFloatingCardMinimized: (minimized: boolean) => void;
   calculateTotalEffort: () => number;
   getSelectedPackages: () => SAPPackage[];
   calculateComplexityMultiplier: () => number;
-  generateRiskAssessment: () => RiskAssessmentT;
-} | null>(null);
+  generateRiskAssessment: () => RiskAssessment;
+}
 
-const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const AppContext = createContext<AppContextType | null>(null);
+
+// ======================== PROVIDER COMPONENT ========================
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<AppState>({
     packages: [...COMPLETE_PACKAGE_LIBRARY],
     integrations: [],
@@ -272,7 +369,7 @@ const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const logChange = useCallback((change: Omit<PackageChange, "id" | "timestamp">) => {
     const newChange: PackageChange = {
       ...change,
-      id: `chg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: \`chg_\${Date.now()}_\${Math.random().toString(36).slice(2, 8)}\`,
       timestamp: new Date(),
     };
     setState((prev) => ({
@@ -299,17 +396,14 @@ const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     setState((prev) => ({ ...prev, selectedView: view }));
   }, []);
 
-  const addIntegration = useCallback((integration: Omit<Integration, "id" | "effort_pd"> & { effort_pd?: number }) => {
-    const complexityEffort = { Simple: 15, Medium: 30, Complex: 60 };
-    const effort = integration.effort_pd ?? complexityEffort[integration.complexity];
-    const newInt: Integration = {
+  const addIntegration = useCallback((integration: Omit<Integration, "id">) => {
+    const newIntegration: Integration = {
       ...integration,
-      id: `int_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      effort_pd: effort,
+      id: \`int_\${Date.now()}_\${Math.random().toString(36).slice(2, 8)}\`,
     };
     setState((prev) => ({
       ...prev,
-      integrations: [...prev.integrations, newInt],
+      integrations: [...prev.integrations, newIntegration],
     }));
   }, []);
 
@@ -346,76 +440,155 @@ const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }, []);
 
   const setAdminMode = useCallback((enabled: boolean) => {
-    setState((prev) => ({
-      ...prev,
-      adminMode: enabled,
-      userRole: enabled ? SUPER_USER_ROLE : DEFAULT_USER_ROLE,
-    }));
+    setState((prev) => ({ ...prev, adminMode: enabled }));
+  }, []);
+
+  const setFloatingCardMinimized = useCallback((minimized: boolean) => {
+    setState((prev) => ({ ...prev, floatingCardMinimized: minimized }));
+  }, []);
+
+  const addPackage = useCallback(() => {
+    console.log("Add package - not implemented");
+  }, []);
+
+  const deletePackage = useCallback(() => {
+    console.log("Delete package - not implemented");
+  }, []);
+
+  const addModule = useCallback(() => {
+    console.log("Add module - not implemented");
+  }, []);
+
+  const updateModule = useCallback(() => {
+    console.log("Update module - not implemented");
+  }, []);
+
+  const deleteModule = useCallback(() => {
+    console.log("Delete module - not implemented");
+  }, []);
+
+  const duplicatePackage = useCallback(() => {
+    console.log("Duplicate package - not implemented");
+  }, []);
+
+  const exportLibrary = useCallback(() => {
+    console.log("Export library - not implemented");
+  }, []);
+
+  const importLibrary = useCallback(() => {
+    console.log("Import library - not implemented");
   }, []);
 
   const validatePrerequisites = useCallback((packageId: string, moduleId?: string) => {
     const pkg = state.packages.find((p) => p.id === packageId);
-    if (!pkg) return { valid: true, missing: [] };
+    if (!pkg) return { valid: false, missing: [packageId] };
 
-    const selectedPackageIds = state.packages.filter((p) => p.selected).map((p) => p.id);
-    const selectedModuleIds = state.packages.flatMap((p) =>
-      p.modules.filter((m) => m.selected).map((m) => m.id)
-    );
-
-    const missingPkg = pkg.prerequisites.filter((req) => !selectedPackageIds.includes(req));
-    let missingMod: string[] = [];
-
+    const missing: string[] = [];
+    
     if (moduleId) {
-      const mod = pkg.modules.find((m) => m.id === moduleId);
-      if (mod) {
-        missingMod = mod.prerequisites.filter((req) => !selectedModuleIds.includes(req));
+      const module = pkg.modules.find((m) => m.id === moduleId);
+      if (module && module.prerequisites) {
+        module.prerequisites.forEach((prereq) => {
+          const prereqModule = pkg.modules.find((m) => m.id === prereq);
+          if (prereqModule && !prereqModule.selected) {
+            missing.push(prereq);
+          }
+        });
       }
+    } else {
+      pkg.prerequisites?.forEach((prereq) => {
+        const prereqPkg = state.packages.find((p) => p.id === prereq);
+        if (prereqPkg && !prereqPkg.selected) {
+          missing.push(prereq);
+        }
+      });
     }
 
-    const missing = [...missingPkg, ...missingMod];
     return { valid: missing.length === 0, missing };
   }, [state.packages]);
 
   const calculateTotalEffort = useCallback(() => {
     let total = 0;
-    state.packages.forEach((p) => {
-      if (p.selected) {
-        total += p.total_effort_pd;
+    
+    state.packages.forEach((pkg) => {
+      if (pkg.selected) {
+        total += pkg.total_effort_pd;
       } else {
-        p.modules.forEach((m) => {
-          if (m.selected) total += m.effort_pd;
+        pkg.modules.forEach((mod) => {
+          if (mod.selected) total += mod.effort_pd;
         });
       }
     });
-    state.integrations.forEach((i) => (total += i.effort_pd));
-    state.malaysiaForms.forEach((f) => {
-      if (f.selected) total += f.effort_pd;
+
+    state.integrations.forEach((int) => {
+      total += int.effort_pd;
     });
-    state.projectServices.forEach((s) => {
-      if (s.selected) total += s.effort_pd;
+
+    state.malaysiaForms.forEach((form) => {
+      if (form.selected) total += form.effort_pd;
     });
-    return Math.round(total * 10) / 10;
-  }, [state.packages, state.integrations, state.malaysiaForms, state.projectServices]);
+
+    state.projectServices.forEach((service) => {
+      if (service.selected) total += service.effort_pd;
+    });
+
+    return total;
+  }, [state]);
 
   const getSelectedPackages = useCallback(() => {
-    return state.packages.filter((p) => p.selected || p.modules.some((m) => m.selected));
+    return state.packages.filter((pkg) => pkg.selected || pkg.modules.some((m) => m.selected));
   }, [state.packages]);
 
   const calculateComplexityMultiplier = useCallback(() => {
-    return 1.0; // Simplified for now
-  }, []);
+    let multiplier = 1.0;
+    
+    if (state.clientProfile.company_size === "enterprise") multiplier += 0.2;
+    if (state.clientProfile.system_landscape === "complex_hybrid") multiplier += 0.3;
+    if (state.clientProfile.client_maturity === "sap_naive") multiplier += 0.15;
+    if (state.clientProfile.legal_entities > 5) multiplier += 0.1;
+    
+    return multiplier;
+  }, [state.clientProfile]);
 
-  const generateRiskAssessment = useCallback((): RiskAssessmentT => {
-    return {
-      overall_risk: "MEDIUM",
+  const generateRiskAssessment = useCallback((): RiskAssessment => {
+    const risks: RiskAssessment = {
+      overall_risk: "LOW",
       specific_risks: [],
       fricew_risks: [],
     };
-  }, []);
 
-  // Add other callback functions as needed...
+    const selectedPackages = getSelectedPackages();
+    
+    if (selectedPackages.length > 10) {
+      risks.specific_risks.push({
+        package: "Overall",
+        risk: "Large scope with multiple packages",
+        likelihood: "HIGH",
+        impact: "HIGH",
+        mitigation: "Phase implementation and ensure adequate resources",
+      });
+    }
 
-  const contextValue = useMemo(() => ({
+    const criticalPackages = selectedPackages.filter((p) => p.critical_path);
+    if (criticalPackages.length > 0) {
+      risks.specific_risks.push({
+        package: "Critical Path",
+        risk: "Critical path dependencies",
+        likelihood: "MEDIUM",
+        impact: "HIGH",
+        mitigation: "Careful sequencing and dependency management",
+      });
+    }
+
+    const highRisks = risks.specific_risks.filter((r) => r.impact === "HIGH").length;
+    if (highRisks >= 3) risks.overall_risk = "HIGH";
+    else if (highRisks >= 1) risks.overall_risk = "MEDIUM";
+    else risks.overall_risk = "LOW";
+
+    return risks;
+  }, [getSelectedPackages]);
+
+  const contextValue = useMemo<AppContextType>(() => ({
     state,
     updatePackage,
     updateClientProfile,
@@ -427,17 +600,17 @@ const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     updateProjectService,
     setBtpIntegrationEnabled,
     setAdminMode,
-    addPackage: () => {},
-    deletePackage: () => {},
-    addModule: () => {},
-    updateModule: () => {},
-    deleteModule: () => {},
-    duplicatePackage: () => {},
-    exportLibrary: () => {},
-    importLibrary: () => {},
+    addPackage,
+    deletePackage,
+    addModule,
+    updateModule,
+    deleteModule,
+    duplicatePackage,
+    exportLibrary,
+    importLibrary,
     logChange,
     validatePrerequisites,
-    setFloatingCardMinimized: () => {},
+    setFloatingCardMinimized,
     calculateTotalEffort,
     getSelectedPackages,
     calculateComplexityMultiplier,
@@ -454,8 +627,17 @@ const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     updateProjectService,
     setBtpIntegrationEnabled,
     setAdminMode,
+    addPackage,
+    deletePackage,
+    addModule,
+    updateModule,
+    deleteModule,
+    duplicatePackage,
+    exportLibrary,
+    importLibrary,
     logChange,
     validatePrerequisites,
+    setFloatingCardMinimized,
     calculateTotalEffort,
     getSelectedPackages,
     calculateComplexityMultiplier,
@@ -465,10 +647,13 @@ const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;
 };
 
+// ======================== EXPORT HOOK ========================
 export const useApp = () => {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error("useApp must be used within AppProvider");
-  return ctx;
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error("useApp must be used within AppProvider");
+  }
+  return context;
 };
 
 export default AppProvider;

@@ -1,0 +1,4 @@
+
+// Add to imports in App.jsx
+import { AIEstimationPanel } from './components/AIEstimationPanel';
+

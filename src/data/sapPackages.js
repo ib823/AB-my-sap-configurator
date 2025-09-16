@@ -1,6 +1,5 @@
-// Complete SAP Package Library extracted from main application
+// Complete SAP Package Library
 export const COMPLETE_PACKAGE_LIBRARY = [
-  // FINANCE CORE PACKAGES
   {
     id: "financial_master_data",
     name: "Financial Master Data Management",
@@ -116,7 +115,8 @@ export const COMPLETE_PACKAGE_LIBRARY = [
       { id: "epf_setup", name: "EPF Integration", description: "Employees Provident Fund setup", effort_pd: 35, prerequisites: ["payroll_schema"], selected: false, malaysia_verified: true },
       { id: "socso_setup", name: "SOCSO Integration", description: "Social Security Organization setup", effort_pd: 35, prerequisites: ["payroll_schema"], selected: false, malaysia_verified: true },
       { id: "eis_setup", name: "EIS Integration", description: "Employment Insurance System", effort_pd: 25, prerequisites: ["payroll_schema"], selected: false, malaysia_verified: true },
-      { id: "pcb_calculation", name: "PCB Tax Calculation", description: "Pay-as-you-earn tax computation", effort_pd: 40, prerequisites: ["payroll_schema"], selected: false, malaysia_verified: true }
+      { id: "pcb_calculation", name: "PCB Tax Calculation", description: "Pay-as-you-earn tax computation", effort_pd: 40, prerequisites: ["payroll_schema"], selected: false, malaysia_verified: true },
+      { id: "bonus_processing", name: "Bonus Processing", description: "Annual bonus and incentives", effort_pd: 28.4, prerequisites: ["pcb_calculation"], selected: false, malaysia_verified: true }
     ],
     expanded: false,
     selected: false
@@ -144,59 +144,49 @@ export const COMPLETE_PACKAGE_LIBRARY = [
     ],
     expanded: false,
     selected: false
+  },
+  {
+    id: "plan_to_fulfil",
+    name: "Plan to Fulfil",
+    category: "SCM Core",
+    description: "Production planning and inventory management",
+    total_effort_pd: 257.1,
+    sgd_price: 180000,
+    layer: "core",
+    type: "core",
+    icon: "🏭",
+    malaysia_verified: false,
+    critical_path: false,
+    prerequisites: [],
+    source: "Page 12",
+    modules: [
+      { id: "material_master", name: "Material Master Data", description: "Product and material setup", effort_pd: 45, prerequisites: [], selected: false },
+      { id: "production_planning", name: "Production Planning", description: "MRP and production scheduling", effort_pd: 60, prerequisites: ["material_master"], selected: false },
+      { id: "inventory_management", name: "Inventory Management", description: "Stock control and movements", effort_pd: 52, prerequisites: ["material_master"], selected: false },
+      { id: "warehouse_management", name: "Warehouse Management", description: "Basic warehouse operations", effort_pd: 50, prerequisites: ["inventory_management"], selected: false },
+      { id: "quality_management", name: "Quality Management", description: "Quality inspection and control", effort_pd: 50.1, prerequisites: ["production_planning"], selected: false }
+    ],
+    expanded: false,
+    selected: false
   }
 ];
 
 export const MALAYSIA_FORMS_LIBRARY = [
   { id: "einvoice_pdf", form_name: "e-Invoice PDF – Invoice (IRBM UID + QR)", category: "Statutory", mandatory: true, effort_pd: 8, description: "LHDN compliant e-invoice with QR code", regulatory_body: "LHDN", sap_module: "SD/FI (AR)", selected: false },
   { id: "credit_note_pdf", form_name: "e-Invoice PDF – Credit Note", category: "Statutory", mandatory: true, effort_pd: 6, description: "Credit note with e-invoice compliance", regulatory_body: "LHDN", sap_module: "SD/FI (AR)", selected: false },
+  { id: "debit_note_pdf", form_name: "e-Invoice PDF – Debit Note", category: "Statutory", mandatory: true, effort_pd: 6, description: "Debit note with e-invoice compliance", regulatory_body: "LHDN", sap_module: "SD/FI (AR)", selected: false },
   { id: "purchase_order", form_name: "Purchase Order (PO/LPO)", category: "Procurement", mandatory: true, effort_pd: 4, description: "Standard purchase order format", regulatory_body: "Internal", sap_module: "MM (Procurement)", selected: false },
-  { id: "official_receipt", form_name: "Official Receipt (Resit Rasmi)", category: "Finance", mandatory: true, effort_pd: 4, description: "Malaysian official receipt format", regulatory_body: "LHDN", sap_module: "FI-AR", selected: false }
+  { id: "epf_borang_a", form_name: "EPF Borang A", category: "HR", mandatory: true, effort_pd: 5, description: "EPF monthly contribution form", regulatory_body: "KWSP", sap_module: "HCM Payroll", selected: false },
+  { id: "socso_form_8a", form_name: "SOCSO Form 8A", category: "HR", mandatory: true, effort_pd: 5, description: "SOCSO monthly contribution", regulatory_body: "PERKESO", sap_module: "HCM Payroll", selected: false },
+  { id: "ea_form", form_name: "EA Form", category: "HR", mandatory: true, effort_pd: 6, description: "Employee yearly income statement", regulatory_body: "LHDN", sap_module: "HCM Payroll", selected: false },
+  { id: "cp39", form_name: "CP39 - PCB Deduction", category: "HR", mandatory: true, effort_pd: 4, description: "Monthly tax deduction schedule", regulatory_body: "LHDN", sap_module: "HCM Payroll", selected: false }
 ];
 
-// Category definitions
-export const BUSINESS_CATEGORIES = {
-  "Finance Core": { 
-    description: "Essential financial management capabilities", 
-    icon: "💰", 
-    packages: ["financial_master_data", "procurement_inventory", "project_accounting"] 
-  },
-  "HCM Core": { 
-    description: "Human resource management", 
-    icon: "👥", 
-    packages: ["core_hr"] 
-  },
-  "HCM Operations": { 
-    description: "Payroll and HR operations", 
-    icon: "💳", 
-    packages: ["payroll"] 
-  },
-  "Malaysia Compliance": { 
-    description: "Malaysia-specific regulatory compliance", 
-    icon: "📋", 
-    packages: ["drc_compliance"] 
-  }
-};
-
-// Utility functions
-export const getPackagesByCategory = () => {
-  return COMPLETE_PACKAGE_LIBRARY.reduce((acc, pkg) => {
-    if (!acc[pkg.category]) acc[pkg.category] = [];
-    acc[pkg.category].push(pkg);
-    return acc;
-  }, {});
-};
-
-export const validatePrerequisites = (packageId, selectedPackages) => {
-  const pkg = COMPLETE_PACKAGE_LIBRARY.find(p => p.id === packageId);
-  if (!pkg) return { valid: true, missing: [] };
-  
-  const selectedIds = selectedPackages.map(p => typeof p === 'string' ? p : p.id);
-  const missing = pkg.prerequisites.filter(prereqId => !selectedIds.includes(prereqId));
-  
-  return {
-    valid: missing.length === 0,
-    missing,
-    warnings: missing.length > 0 ? [`${pkg.name} requires: ${missing.join(', ')}`] : []
-  };
-};
+export const PROJECT_SERVICES_LIBRARY = [
+  { id: "pm_office", service_name: "Project Management Office", category: "Project Management", effort_pd: 120, description: "Overall project governance and PMO", mandatory: true, selected: false },
+  { id: "change_management", service_name: "Change Management", category: "Project Management", effort_pd: 80, description: "Organizational change and adoption", mandatory: true, selected: false },
+  { id: "data_migration", service_name: "Data Migration", category: "Cutover & Migration", effort_pd: 150, description: "Master and transaction data migration", mandatory: true, selected: false },
+  { id: "end_user_training", service_name: "End User Training", category: "Training", effort_pd: 60, description: "Training for business users", mandatory: true, selected: false },
+  { id: "basis_setup", service_name: "Basis & System Setup", category: "Basis & Infrastructure", effort_pd: 80, description: "Technical system setup and configuration", mandatory: true, selected: false },
+  { id: "hypercare", service_name: "Hypercare Support", category: "Support", effort_pd: 90, description: "Post go-live intensive support", mandatory: true, selected: false }
+];

@@ -17,7 +17,7 @@ const COMPANY_SIZES = [
   { value: 'enterprise', label: 'Enterprise (5000+ employees)' }
 ];
 
-const SAPScopeApp: React.FC = () => {
+const SAPScopeAppEnhanced: React.FC = () => {
   const {
     state,
     updatePackage,
@@ -570,4 +570,4 @@ const SAPScopeApp: React.FC = () => {
   );
 };
 
-export default SAPScopeApp;
+export default SAPScopeAppEnhanced;
