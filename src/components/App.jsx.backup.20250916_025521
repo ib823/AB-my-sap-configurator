@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { ChevronDown, ChevronRight, Calendar, Users, DollarSign, Download, Eye, EyeOff, Package, AlertCircle, TrendingUp, Clock, Target, Briefcase, X, Plus, Copy, Trash2, GripVertical, CheckCircle, Activity, Link2, Settings, Shield } from "lucide-react";
-import PhaseDetailPanel from "./PhaseDetailPanel";
 
 // Import SAP Scope components
 const SAPScopeApp = React.lazy(() => 
@@ -8,6 +7,162 @@ const SAPScopeApp = React.lazy(() =>
     default: () => <div style={{ padding: '20px', textAlign: 'center' }}>SAP Scope Module Loading...</div> 
   }))
 );
+
+// Phase Detail Panel Component
+const PhaseDetailPanel = ({ phase, isOpen, onClose, updatePhase, deletePhase, duplicatePhase, holidays, clientPresentationMode, BUSINESS_DAY_BASE_DATE, formatDateElegant, calculatePhasePersonDays, calculatePhaseCost, formatCurrency, selectedCatalogRegion }) => {
+  if (!phase || !isOpen) return null;
+
+  const businessDayToDate = (index, hols = holidays, skipHolidays = true, baseDate = BUSINESS_DAY_BASE_DATE) => {
+    const start = new Date(baseDate);
+    const holidaySet = new Set((hols || []).map(h => h.date));
+    let d = new Date(start);
+    let count = 0;
+    if (index <= 0) return d;
+    while (count < index) {
+      d.setDate(d.getDate() + 1);
+      const dow = d.getDay();
+      const ymd = d.toISOString().split("T")[0];
+      const weekday = dow >= 1 && dow <= 5;
+      const isHol = holidaySet.has(ymd);
+      if (weekday && (!skipHolidays || !isHol)) count++;
+    }
+    return d;
+  };
+
+  const dateToBusinessDay = (dateInput, hols = holidays, skipHolidays = true, baseDate = BUSINESS_DAY_BASE_DATE) => {
+    const target = new Date(dateInput);
+    const holidaySet = new Set((hols || []).map(h => h.date));
+    const start = new Date(baseDate);
+    if (target <= start) return 0;
+    let d = new Date(start);
+    let idx = 0;
+    while (d < target) {
+      d.setDate(d.getDate() + 1);
+      const dow = d.getDay();
+      const ymd = d.toISOString().split("T")[0];
+      const weekday = dow >= 1 && dow <= 5;
+      const isHol = holidaySet.has(ymd);
+      if (weekday && (!skipHolidays || !isHol)) idx++;
+    }
+    return idx;
+  };
+
+  const calculateEndDate = (startDate, workingDays, hols = holidays, skipHolidays = true) => {
+    let d = new Date(startDate);
+    let added = 0;
+    const holidaySet = new Set((hols || []).map((h) => h.date));
+    while (added < workingDays) {
+      const dow = d.getDay();
+      const ymd = d.toISOString().split("T")[0];
+      const weekday = dow >= 1 && dow <= 5;
+      const isHol = holidaySet.has(ymd);
+      if (weekday && (!skipHolidays || !isHol)) added++;
+      if (added < workingDays) d.setDate(d.getDate() + 1);
+    }
+    return d;
+  };
+
+  return (
+    <div className={`detail-panel ${isOpen ? "open" : ""}`}>
+      <div className="detail-header">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h3 className="detail-title">{phase?.name || "Phase"}</h3>
+            <p className="detail-subtitle">
+              Ends {formatDateElegant(calculateEndDate(
+                businessDayToDate(phase.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE),
+                phase.workingDays, holidays, phase.skipHolidays
+              ))} • {calculatePhasePersonDays(phase)} person-days
+              {!clientPresentationMode && ` • ${formatCurrency(calculatePhaseCost(phase), selectedCatalogRegion)}`}
+            </p>
+          </div>
+          <button className="secondary-action" onClick={onClose}>Close</button>
+        </div>
+      </div>
+
+      <div className="detail-content">
+        <div className="detail-section">
+          <h3 className="section-title">Timeline</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <div>
+              <label className="form-label">Start Date</label>
+              <input
+                className="form-input"
+                type="date"
+                value={businessDayToDate(phase.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE).toISOString().split("T")[0]}
+                onChange={(e) => {
+                  const newStartDay = dateToBusinessDay(new Date(e.target.value), holidays, true, BUSINESS_DAY_BASE_DATE);
+                  updatePhase(phase.id, { startBusinessDay: newStartDay });
+                }}
+              />
+            </div>
+            <div>
+              <label className="form-label">End Date</label>
+              <input
+                className="form-input"
+                type="date"
+                value={calculateEndDate(
+                  businessDayToDate(phase.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE),
+                  phase.workingDays, holidays, phase.skipHolidays
+                ).toISOString().split("T")[0]}
+                onChange={(e) => {
+                  const endDate = new Date(e.target.value);
+                  const startDate = businessDayToDate(phase.startBusinessDay, holidays, true, BUSINESS_DAY_BASE_DATE);
+                  if (endDate >= startDate) {
+                    const newDuration = dateToBusinessDay(endDate, holidays, phase.skipHolidays, BUSINESS_DAY_BASE_DATE) - phase.startBusinessDay + 1;
+                    updatePhase(phase.id, { workingDays: Math.max(1, newDuration) });
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <div style={{ marginTop: "16px" }}>
+            <label className="form-checkbox">
+              <input
+                className="checkbox"
+                type="checkbox"
+                checked={!!phase.skipHolidays}
+                onChange={(e) => updatePhase(phase.id, { skipHolidays: e.target.checked })}
+              />
+              Skip holidays when calculating end date
+            </label>
+          </div>
+        </div>
+
+        <div className="detail-section">
+          <h3 className="section-title">Resources</h3>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            <button className="secondary-action" onClick={() => duplicatePhase(phase.id)}>Duplicate Phase</button>
+            <button className="secondary-action" onClick={() => deletePhase(phase.id)}>Delete Phase</button>
+          </div>
+          {(phase.resources || []).length === 0 ? (
+            <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>No resources assigned</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {phase.resources.map((r) => (
+                <div key={r.id} style={{
+                  padding: 12,
+                  background: "var(--background)",
+                  borderRadius: 8,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center"
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>{r.name}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                      {r.role} • {r.allocation}% • {formatCurrency(r.hourlyRate * 8, selectedCatalogRegion)}/day
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function ProjectTimeline() {
   /* =======================
@@ -95,6 +250,21 @@ export default function ProjectTimeline() {
       transform: scale(1.1);
     }
 
+    /* Panel */
+    .detail-panel {position:fixed;top:0;right:0;width:420px;height:100vh;background:var(--surface);box-shadow:-8px 0 25px rgba(0,0,0,0.15);transform:translateX(100%);transition:transform .45s var(--spring);z-index:100;overflow-y:auto}
+    .detail-panel.open {transform:translateX(0)}
+    .detail-header {padding:20px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,var(--surface) 0%,#F8F9FB 100%);position:sticky;top:0;z-index:10}
+    .detail-title {font-size:20px;font-weight:900;margin:0 0 4px 0}
+    .detail-subtitle {font-size:13px;color:var(--text-secondary);margin:0}
+    .detail-content {padding:20px}
+    .detail-section {margin-bottom:24px}
+    .section-title {font-size:15px;font-weight:900;margin:0 0 10px 0}
+
+    .form-label {display:block;font-size:13px;font-weight:800;margin-bottom:6px;color:var(--text-primary)}
+    .form-input,.form-select {width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--surface)}
+    .form-checkbox {display:flex;align-items:center;gap:8px;font-size:14px}
+    .checkbox {width:16px;height:16px;accent-color:var(--primary)}
+
     .backdrop {position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);opacity:0;pointer-events:none;transition:opacity .45s var(--transition);z-index:99}
     .backdrop.open {opacity:1;pointer-events:auto}
 
@@ -125,6 +295,9 @@ export default function ProjectTimeline() {
   const [clientPresentationMode, setClientPresentationMode] = useState(false);
   const [sapScopeOpen, setSapScopeOpen] = useState(false);
   const [selectedCatalogRegion, setSelectedCatalogRegion] = useState("ABMY");
+  const [operatingMode, setOperatingMode] = useState("standard");
+  const [suggestions, setSuggestions] = useState([]);
+  const [errors, setErrors] = useState({});
   const [notifications, setNotifications] = useState([]);
 
   // Resource Catalog
@@ -195,31 +368,36 @@ export default function ProjectTimeline() {
      ENHANCED ZOOM LEVELS WITH STRICT RULES
      ========================== */
   const getOptimalZoomLevel = (spanBusinessDays, containerWidth, forceNoScroll = true) => {
-    const yearsSpan = spanBusinessDays / 260;
+    // Calculate years span
+    const yearsSpan = spanBusinessDays / 260; // ~260 business days per year
     
+    // If > 10 years, special handling with scrollbar
     if (yearsSpan > 10) {
       return { 
         name: "decade", 
-        unit: 2600,
+        unit: 2600, // 10 years of business days
         minWidth: Math.floor(containerWidth / Math.ceil(yearsSpan / 10)),
         label: "Decade",
         allowScroll: true
       };
     }
 
+    // Enhanced zoom levels - MAXIMUM is quarterly unless extreme duration
     const levels = [
       { name: "daily", unit: 1, minWidth: 60, label: "Daily", maxDays: 30 },
       { name: "weekly", unit: 5, minWidth: 80, label: "Weekly", maxDays: 90 },
       { name: "biweekly", unit: 10, minWidth: 100, label: "Bi-weekly", maxDays: 180 },
       { name: "monthly", unit: 22, minWidth: 120, label: "Monthly", maxDays: 365 },
-      { name: "quarterly", unit: 66, minWidth: 140, label: "Quarterly", maxDays: 1095 },
-      { name: "halfyearly", unit: 132, minWidth: 160, label: "Half-yearly", maxDays: 2190 },
-      { name: "yearly", unit: 260, minWidth: 180, label: "Yearly", maxDays: 2600 }
+      { name: "quarterly", unit: 66, minWidth: 140, label: "Quarterly", maxDays: 1095 }, // ~3 years
+      { name: "halfyearly", unit: 132, minWidth: 160, label: "Half-yearly", maxDays: 2190 }, // ~6 years
+      { name: "yearly", unit: 260, minWidth: 180, label: "Yearly", maxDays: 2600 } // ~10 years
     ];
 
+    // If forceNoScroll, find a zoom that fits without scrolling
     if (forceNoScroll) {
       for (const level of levels) {
         if (level.name === "quarterly" && spanBusinessDays <= level.maxDays) {
+          // For quarterly, intelligently fit to container
           const units = Math.ceil(spanBusinessDays / level.unit);
           const adjustedWidth = Math.floor(containerWidth / units);
           return { ...level, minWidth: Math.max(40, adjustedWidth) };
@@ -232,12 +410,14 @@ export default function ProjectTimeline() {
         }
       }
       
+      // If nothing fits at quarterly or below, force quarterly with intelligent fitting
       const quarterlyLevel = levels.find(l => l.name === "quarterly");
       const units = Math.ceil(spanBusinessDays / quarterlyLevel.unit);
       const adjustedWidth = Math.floor(containerWidth / units);
       return { ...quarterlyLevel, minWidth: Math.max(40, adjustedWidth) };
     }
 
+    // Standard zoom selection
     for (const level of levels) {
       if (spanBusinessDays <= level.maxDays) {
         return level;
@@ -255,16 +435,16 @@ export default function ProjectTimeline() {
       case "daily":
       case "weekly":
       case "biweekly":
-        return holidayCount > 0;
+        return holidayCount > 0; // Show if any holiday
       case "monthly":
-        return holidayCount >= 1;
+        return holidayCount >= 1; // Show if at least 1 weekday holiday
       case "quarterly":
-        return holidayCount > 3;
+        return holidayCount > 3; // Show only if > 3 days
       case "halfyearly":
-        return holidayCount > 7;
+        return holidayCount > 7; // Show only if > 7 days
       case "yearly":
       case "decade":
-        return false;
+        return false; // Never show holiday colors
       default:
         return false;
     }
@@ -279,7 +459,7 @@ export default function ProjectTimeline() {
       const hDate = new Date(h.date);
       if (hDate >= start && hDate <= end) {
         const dow = hDate.getDay();
-        if (dow >= 1 && dow <= 5) {
+        if (dow >= 1 && dow <= 5) { // Only count weekday holidays
           count++;
         }
       }
@@ -411,15 +591,17 @@ export default function ProjectTimeline() {
     const zoomLevel = window.currentZoomLevel || { unit: 1, minWidth: 80 };
     const offset = window.timelineStartOffset || 0;
     
+    // Calculate relative position
     const relativeStart = Math.max(0, phase.startBusinessDay - offset);
     const totalUnits = Math.ceil((window.totalTimelineSpan || 100) / zoomLevel.unit);
     
+    // Intelligent fitting - calculate actual unit width based on container
     const actualUnitWidth = containerWidth / totalUnits;
     const startUnit = relativeStart / zoomLevel.unit;
     const left = startUnit * actualUnitWidth;
     
     const durationUnits = phase.workingDays / zoomLevel.unit;
-    const width = Math.max(durationUnits * actualUnitWidth, 40);
+    const width = Math.max(durationUnits * actualUnitWidth, 40); // Minimum width for visibility
     
     return { 
       left: `${left}px`, 
@@ -450,6 +632,7 @@ export default function ProjectTimeline() {
     const container = document.querySelector(".timeline-body");
     const containerWidth = container ? container.clientWidth - 48 : 900;
     
+    // Get optimal zoom with no-scroll preference
     const zoomLevel = getOptimalZoomLevel(totalSpan, containerWidth, true);
 
     window.timelineStartOffset = startOffset;
@@ -481,8 +664,9 @@ export default function ProjectTimeline() {
       window.timelineStartOffset = 0;
       window.totalTimelineSpan = 30;
       
-      if (headerScroll) headerScroll.classList.remove("scrollable");
+      // Remove scrollable class
       bodyScroll.classList.remove("scrollable");
+      if (headerScroll) headerScroll.classList.remove("scrollable");
       return;
     }
 
@@ -497,6 +681,7 @@ export default function ProjectTimeline() {
     window.timelineStartOffset = Math.max(0, minStart - 2);
     window.totalTimelineSpan = totalSpan;
     
+    // Add scrollable class only if needed
     if (zoomLevel.allowScroll) {
       bodyScroll.classList.add("scrollable");
       if (headerScroll) headerScroll.classList.add("scrollable");
@@ -525,6 +710,7 @@ export default function ProjectTimeline() {
     }
   }, [holidays, autoFitTimeline]);
 
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyPress = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
@@ -536,6 +722,7 @@ export default function ProjectTimeline() {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [clientPresentationMode]);
 
+  /* Continue with rest of the file... */
   /* ======================
      PROJECT DATE HELPERS
      ====================== */
@@ -710,6 +897,11 @@ export default function ProjectTimeline() {
     }, duration);
   };
 
+  const dismissSuggestion = (id) => {
+    setSuggestions(prev => prev.filter(s => s.id !== id));
+  };
+
+  // Calculate project metrics
   const projectDuration = getProjectDuration();
   const projectCost = phases.reduce((sum, p) => sum + calculatePhaseCost(p), 0);
   const totalPersonDays = phases.reduce((sum, p) => sum + calculatePhasePersonDays(p), 0);
@@ -724,6 +916,7 @@ export default function ProjectTimeline() {
     <>
       <style>{styles}</style>
       <div className="app">
+        {/* Header */}
         <div className="header">
           <div>
             <h1 className="title">SAP Implementation Timeline</h1>
@@ -752,7 +945,7 @@ export default function ProjectTimeline() {
                   </div>
                   <div className="status-separator" />
                   <div className="status-metric">
-                    🧮 <span className="status-metric-value">{formatCurrency(blendedRate, selectedCatalogRegion)}/PD</span>
+                    🧮 <span className="status-metric-value">{formatCurrency(blendedRate, selectedCatalogRegion, { abbreviate: false })}/PD</span>
                   </div>
                 </>
               )}
@@ -784,6 +977,7 @@ export default function ProjectTimeline() {
           </div>
         </div>
 
+        {/* Timeline */}
         <div className="timeline-container">
           <div className="timeline-header">
             <div className={`timeline-header-inner ${allowScroll ? 'scrollable' : ''}`}>
@@ -805,12 +999,14 @@ export default function ProjectTimeline() {
 
           <div className={`timeline-body ${allowScroll ? 'scrollable' : ''}`}>
             <div className="timeline-content">
+              {/* Grid */}
               <div className="timeline-grid">
                 {businessDays.map((d, idx) => (
                   <div key={idx} className={`grid-line ${d.isToday ? "today" : ""} ${d.isHoliday ? "holiday" : ""}`} />
                 ))}
               </div>
 
+              {/* Phases */}
               <div className="phases-container">
                 {!phases.length ? (
                   <div className="empty-state">
@@ -841,6 +1037,7 @@ export default function ProjectTimeline() {
                           </div>
                         </div>
 
+                        {/* Resource avatars */}
                         <div className="resource-avatars">
                           {(p.resources || []).slice(0, 3).map((r) => (
                             <div key={r.id} className="resource-avatar" title={`${r.name} (${r.role})`}>
@@ -849,6 +1046,7 @@ export default function ProjectTimeline() {
                           ))}
                         </div>
 
+                        {/* Capacity bar */}
                         <div className="resource-capacity">
                           <div className="resource-fill" style={{ width: `${avgAllocation(p.resources)}%` }} />
                         </div>
@@ -861,8 +1059,10 @@ export default function ProjectTimeline() {
           </div>
         </div>
 
+        {/* Backdrop */}
         <div className={`backdrop ${detailPanelOpen ? "open" : ""}`} onClick={closePhaseDetail} />
 
+        {/* Phase Detail Panel */}
         <PhaseDetailPanel
           phase={selectedPhase}
           isOpen={detailPanelOpen}
@@ -878,9 +1078,9 @@ export default function ProjectTimeline() {
           calculatePhaseCost={calculatePhaseCost}
           formatCurrency={formatCurrency}
           selectedCatalogRegion={selectedCatalogRegion}
-          RESOURCE_CATALOG={RESOURCE_CATALOG}
         />
 
+        {/* SAP Scope Modal */}
         {sapScopeOpen && (
           <div style={{
             position: 'fixed',
@@ -935,6 +1135,7 @@ export default function ProjectTimeline() {
           </div>
         )}
 
+        {/* Notifications */}
         <div style={{
           position: 'fixed',
           top: '24px',
